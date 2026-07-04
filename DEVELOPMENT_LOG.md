@@ -67,3 +67,11 @@
 - Checks: workflow YAML parse, typecheck, 14 tests, production build, and diff check passed.
 - Current limitation: the workflow requires permission to push version metadata to the default branch.
 - Next: verify the complete automation with the next release tag.
+
+## 2026-07-04 — Standard Obsidian release assets
+
+- Changed: Removed the generated ZIP and `versions.json` attachment from plugin releases.
+- Why: Obsidian installs only `main.js`, `manifest.json`, and optional `styles.css`; `versions.json` remains source metadata.
+- Files: release workflow and README.
+- Checks: workflow YAML parse, typecheck, 14 tests, production build, and diff check passed.
+- Next: clean the redundant assets from release 0.1.2.

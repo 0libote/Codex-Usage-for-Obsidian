@@ -81,15 +81,12 @@ jobs:
       - name: Version already synced
         if: steps.sync-version.outputs.changed != 'true'
         run: echo "Version files already match ${{ steps.sync-version.outputs.version }}"
-      - name: Create release zip
-        run: zip codex-usage-for-obsidian.zip main.js manifest.json versions.json styles.css
       - name: Attest release files
         uses: actions/attest@v4
         with:
           subject-path: |
             main.js
             manifest.json
-            versions.json
             styles.css
             codex-usage-for-obsidian.zip
       - name: Create or update release
@@ -97,7 +94,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.sync-version.outputs.version }}
         run: |
-          files=(main.js manifest.json versions.json styles.css codex-usage-for-obsidian.zip)
+          files=(main.js manifest.json styles.css)
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" "${files[@]}" --clobber
           else
