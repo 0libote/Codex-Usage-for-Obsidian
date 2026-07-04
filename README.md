@@ -10,7 +10,7 @@ The MVP supports Obsidian Desktop on macOS arm64/x64 and Windows x64. It is desk
 
 The plugin shows a compact status-bar summary and a dashboard containing session and weekly usage, optional credits/cost/reset/account data, cache age, helper details, warnings, and expandable raw output.
 
-Published helper assets are not configured yet. The checked-in manifest contains deliberately invalid release placeholders, so helper installation fails safely until controlled packages and checksums are supplied.
+Managed helper 0.38.1 packages are published separately for all supported targets and pinned by SHA-256 in the bundled manifest.
 
 ## Managed helpers
 
@@ -51,7 +51,7 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 ## Troubleshooting
 
 - **Helper missing:** Open plugin settings and choose Install Helper.
-- **Manifest unavailable:** The project owner must publish controlled helper assets and replace placeholder manifest values.
+- **Manifest unavailable:** Confirm GitHub is reachable and the plugin version includes a published helper manifest.
 - **Checksum failed:** The helper is not executed. Report the release URL and checksum.
 - **Command or parse failure:** Run Diagnostics, inspect Raw Output, and check Obsidian’s developer console.
 - **Stale usage:** A refresh failed and the last successful cache entry is being shown with a warning.

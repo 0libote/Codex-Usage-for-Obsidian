@@ -55,6 +55,20 @@ describe("helper core", () => {
     expect(data.capabilities).toContain("rawOutput");
   });
 
+  it("normalises current array output without discarding sibling payloads", () => {
+    const raw = [
+      { provider: "codex", usage: { primary: { usedPercent: 7 }, secondary: { usedPercent: 9 } } },
+      { provider: "other", providerSpecific: true }
+    ];
+    const data = adapters.mock.parse(JSON.stringify(raw), {
+      provider: "codex", platform: "macos", architecture: "arm64", adapter: "mock",
+      timestamp: "", cacheAgeSeconds: 0,
+      helper: { installed: true, path: "", version: "", upstreamVersion: "", ourPackageVersion: "" }
+    });
+    expect(data.usage.session).toEqual({ usedPercent: 7 });
+    expect(data.raw).toEqual(raw);
+  });
+
   it("constructs verified upstream command lines in one place", () => {
     expect(adapters.codexbar_macos.usageArgs).toEqual([
       "usage", "--provider", "codex", "--format", "json", "--json-only"

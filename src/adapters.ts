@@ -11,23 +11,27 @@ export interface Adapter {
   parse(raw: string, context: Omit<UsageData, "usage" | "credits" | "cost" | "pace" | "status" | "account" | "capabilities" | "warnings" | "raw">): UsageData;
 }
 
-function parseJson(raw: string): Record<string, unknown> {
+function parseJson(raw: string): { payload: Record<string, unknown>; raw: unknown } {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Expected a JSON object");
-    return parsed as Record<string, unknown>;
+    const payload = Array.isArray(parsed)
+      ? parsed.find(item => record(item).provider === "codex") ?? parsed[0]
+      : parsed;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Expected a JSON object or non-empty array");
+    return { payload: payload as Record<string, unknown>, raw: parsed };
   } catch (error) {
     throw new CodexUsageError("PARSE_FAILED", "The helper returned invalid JSON.", String(error));
   }
 }
 
 function normalise(adapter: Adapter, rawText: string, context: Parameters<Adapter["parse"]>[1]): UsageData {
-  const raw = parseJson(rawText);
+  const parsed = parseJson(rawText);
+  const payload = parsed.payload;
   const object = (key: string) =>
-    raw[key] && typeof raw[key] === "object" && !Array.isArray(raw[key])
-      ? raw[key] as Record<string, unknown> : {};
+    payload[key] && typeof payload[key] === "object" && !Array.isArray(payload[key])
+      ? payload[key] as Record<string, unknown> : {};
   const usage = object("usage");
-  const nested = Object.keys(usage).length ? usage : raw;
+  const nested = Object.keys(usage).length ? usage : payload;
   return {
     ...context,
     usage: {
@@ -42,7 +46,7 @@ function normalise(adapter: Adapter, rawText: string, context: Parameters<Adapte
     account: object("account"),
     capabilities: adapter.capabilities,
     warnings: [],
-    raw
+    raw: parsed.raw
   };
 }
 

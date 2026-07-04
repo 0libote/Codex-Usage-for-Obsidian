@@ -44,3 +44,21 @@
 - Checks: macOS arm64 CLI version/help, typecheck, 10 tests, production build, workflow YAML parse, diff check; pending Windows runner smoke test.
 - Known issues: Manifest remains unchanged until all three controlled packages are produced and their checksums recorded.
 - Next: Run the helper publishing workflow, update manifest checksums, then exercise install and usage locally.
+
+## 2026-07-04 — Helper release 0.38.1
+
+- Changed: Published separate controlled helper packages for macOS arm64/x64 and Windows x64, then pinned their release URLs and SHA-256 values.
+- Why: Users need verified one-click installation without separately installing either upstream project.
+- Files: helper manifest, compatibility notes, README.
+- Checks: GitHub run 28711696520 passed all macOS, Windows, packaging, and release jobs.
+- Known issues: Provider usage requires the user's existing local Codex authentication.
+- Next: Run the plugin installer and usage adapter end to end on macOS.
+
+## 2026-07-04 — Live output compatibility
+
+- Changed: Accepted CodexBar's current JSON array output while preserving every payload in `raw`.
+- Why: The controlled helper installed correctly, but live 0.38.1 output wraps provider payloads in an array.
+- Files: adapter parser and compatibility test.
+- Checks: Live managed download/install/execute/remove; normalized session and weekly fields; typecheck; 11 tests; production build; diff check.
+- Known issues: None identified in the macOS helper path.
+- Next: Commit and publish the pinned manifest.
