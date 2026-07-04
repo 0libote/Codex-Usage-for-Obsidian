@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { ItemView, Modal, Notice, normalizePath, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
-import { HelperManager, HelperStatus } from "./helper-manager";
+import { HelperManager, HelperStatus, ProviderConfigInput, ProviderStatus } from "./helper-manager";
 import { Logger } from "./logging";
 import { DashboardSection, DEFAULT_SETTINGS, Settings, UsageData } from "./models";
 
@@ -221,7 +221,15 @@ class DashboardView extends ItemView {
       metric(grid, "Current session", money(data.cost.sessionCostUSD, data.cost.currencyCode), "Estimated local cost");
     }
     if (sections.has("tokens")) {
-      metric(grid, "Last 30 days tokens", count(data.cost.last30DaysTokens), "Local Codex history");
+      const tokens = tokenUsage(data.cost);
+      metric(
+        grid,
+        "Non-cached tokens",
+        count(tokens.nonCached),
+        tokens.processed === undefined
+          ? "Local Codex history"
+          : `${count(tokens.processed)} processed · ${count(tokens.cached)} cache reads`
+      );
     }
     if (sections.has("account")) {
       metric(grid, "Account", accountSummary(data.account), "Local account");
@@ -236,6 +244,8 @@ class DashboardView extends ItemView {
 }
 
 class CodexUsageSettings extends PluginSettingTab {
+  private selectedProvider = "opencode";
+
   constructor(private owner: CodexUsagePlugin) {
     super(owner.app, owner);
   }
@@ -287,6 +297,10 @@ class CodexUsageSettings extends PluginSettingTab {
       installPath.setDesc(status.path);
       installAction.setName(status.state === "Missing" ? "Install helper" : "Update helper");
     }).catch(error => plugin.showError(error));
+
+    new Setting(this.containerEl).setName("Providers").setHeading();
+    const providerArea = this.containerEl.createDiv();
+    void this.renderProviders(providerArea);
 
     new Setting(this.containerEl).setName("Dashboard").setHeading();
     new Setting(this.containerEl)
@@ -376,12 +390,126 @@ class CodexUsageSettings extends PluginSettingTab {
     new Notice("Codex usage logs cleared.");
   }
 
+  private async renderProviders(container: HTMLElement): Promise<void> {
+    container.empty();
+    let providers: ProviderStatus[];
+    try {
+      providers = await this.owner.manager.providers();
+    } catch (error) {
+      container.createEl("p", { text: "Install the managed helper to configure providers.", cls: "codex-usage-muted" });
+      await this.owner.logger.write("debug", `Provider settings unavailable: ${String(error)}`);
+      return;
+    }
+    const selected = providers.find(item => item.provider === this.selectedProvider) ?? providers[0];
+    if (!selected) return;
+    this.selectedProvider = selected.provider;
+
+    new Setting(container)
+      .setName("Provider")
+      .setDesc(providerSetup(selected.provider))
+      .addDropdown(dropdown => {
+        for (const provider of providers) dropdown.addOption(provider.provider, provider.displayName);
+        dropdown.setValue(selected.provider).onChange(value => {
+          this.selectedProvider = value;
+          void this.renderProviders(container);
+        });
+      });
+    new Setting(container)
+      .setName(`Enable ${selected.displayName}`)
+      .setDesc("Stored in the CLI configuration on this device.")
+      .addToggle(toggle => toggle.setValue(selected.enabled).onChange(async enabled => {
+        try {
+          await this.owner.manager.setProviderEnabled(selected.provider, enabled);
+          new Notice(`${selected.displayName} ${enabled ? "enabled" : "disabled"}.`);
+        } catch (error) {
+          this.owner.showError(error);
+        }
+      }));
+
+    const input: ProviderConfigInput = {};
+    if (API_KEY_PROVIDERS.has(selected.provider)) {
+      new Setting(container)
+        .setName("API key")
+        .setDesc("Leave blank to keep the current device-local key.")
+        .addText(text => {
+          text.inputEl.type = "password";
+          text.setPlaceholder("Paste API key").onChange(value => { input.apiKey = value; });
+        });
+    }
+    if (COOKIE_PROVIDERS.has(selected.provider)) {
+      new Setting(container)
+        .setName("Manual cookie header")
+        .setDesc("Optional. Leave blank to use automatic browser import.")
+        .addTextArea(text => {
+          text.inputEl.rows = 3;
+          text.setPlaceholder("Cookie: name=value; …").onChange(value => { input.cookieHeader = value; });
+        });
+    }
+    if (selected.provider === "opencode" || selected.provider === "opencodego") {
+      new Setting(container)
+        .setName("Workspace ID")
+        .setDesc("Optional opencode workspace ID or workspace URL.")
+        .addText(text => text.setPlaceholder("Workspace ID").onChange(value => { input.workspaceID = value; }));
+    }
+    if (["llmproxy", "litellm", "clawrouter"].includes(selected.provider)) {
+      new Setting(container)
+        .setName("Base URL")
+        .setDesc("HTTPS endpoint for this provider.")
+        .addText(text => text.setPlaceholder("Provider URL").onChange(value => { input.enterpriseHost = value; }));
+    }
+    if (["minimax", "moonshot", "alibaba"].includes(selected.provider)) {
+      new Setting(container)
+        .setName("Region")
+        .setDesc("Optional provider region.")
+        .addText(text => text.setPlaceholder("Region").onChange(value => { input.region = value; }));
+    }
+    if (Object.keys(input).length || API_KEY_PROVIDERS.has(selected.provider) || COOKIE_PROVIDERS.has(selected.provider)) {
+      new Setting(container)
+        .setName("Save provider setup")
+        .setDesc("Secrets remain in the CLI configuration on this device and are not synced.")
+        .addButton(button => button.setButtonText("Save").setCta().onClick(async () => {
+          try {
+            await this.owner.manager.configureProvider(selected.provider, input);
+            new Notice(`${selected.displayName} setup saved.`);
+            await this.renderProviders(container);
+          } catch (error) {
+            this.owner.showError(error);
+          }
+        }));
+    }
+  }
+
   private async resetHelper(): Promise<void> {
     await this.owner.manager.remove();
     await this.owner.clearCache();
     this.render();
     new Notice("Managed helper removed.");
   }
+}
+
+const API_KEY_PROVIDERS = new Set([
+  "openai", "azureopenai", "claude", "alibaba", "copilot", "zai", "minimax", "kimi", "kilo",
+  "kimik2", "moonshot", "ollama", "synthetic", "warp", "openrouter", "elevenlabs", "doubao",
+  "deepseek", "codebuff", "crof", "venice", "groq", "llmproxy", "litellm", "deepgram", "poe",
+  "chutes", "crossmodel", "clawrouter"
+]);
+
+const COOKIE_PROVIDERS = new Set([
+  "claude", "cursor", "opencode", "opencodego", "alibaba", "alibabatokenplan", "factory", "devin",
+  "minimax", "manus", "kimi", "augment", "amp", "t3chat", "ollama", "perplexity", "mimo", "sakana",
+  "abacus", "mistral", "commandcode", "qoder"
+]);
+
+function providerSetup(provider: string): string {
+  if (provider === "opencode" || provider === "opencodego") {
+    return "Sign in at opencode.ai in Chrome or Dia, or provide a manual cookie header. OpenCode Go can also read its local database.";
+  }
+  if (API_KEY_PROVIDERS.has(provider) && COOKIE_PROVIDERS.has(provider)) {
+    return "Configure an API key or use a supported browser session.";
+  }
+  if (API_KEY_PROVIDERS.has(provider)) return "Configure the provider API key on this device.";
+  if (COOKIE_PROVIDERS.has(provider)) return "Sign in with a supported browser or provide a manual cookie header.";
+  return "Enable this provider after completing its local CLI, application, OAuth, or cloud setup.";
 }
 
 class ConfirmModal extends Modal {
@@ -484,6 +612,7 @@ function dashboardMarkdown(data: UsageData, display: Settings["usageDisplay"]): 
     const used = [value.percent, value.usedPercent, value.usagePercent].find(item => typeof item === "number");
     return typeof used === "number" ? `${display === "remaining" ? 100 - used : used}% ${display}` : "Not available";
   };
+  const tokens = tokenUsage(data.cost);
   return `# Codex usage
 
 > [!info] Synced snapshot
@@ -499,7 +628,8 @@ function dashboardMarkdown(data: UsageData, display: Settings["usageDisplay"]): 
 
 - Last 30 days: ${money(data.cost.last30DaysCostUSD, data.cost.currencyCode) || "Not available"}
 - Session: ${money(data.cost.sessionCostUSD, data.cost.currencyCode) || "Not available"}
-- Last 30 days tokens: ${count(data.cost.last30DaysTokens) || "Not available"}
+- Non-cached tokens: ${count(tokens.nonCached) || "Not available"}
+- Tokens processed: ${count(tokens.processed) || "Not available"} (${count(tokens.cached) || "0"} cache reads)
 
 _This file is generated by Codex Usage. Raw helper output and credentials are never synced._
 `;
@@ -515,6 +645,25 @@ function scalar(value: unknown): string {
 
 function count(value: unknown): string {
   return typeof value === "number" ? new Intl.NumberFormat().format(value) : "";
+}
+
+function number(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function tokenUsage(cost: Record<string, unknown>): {
+  nonCached: number | undefined;
+  processed: number | undefined;
+  cached: number;
+} {
+  const totals = record(cost.totals);
+  const processed = number(totals.totalTokens) ?? number(cost.last30DaysTokens);
+  const cached = number(totals.cacheReadTokens) ?? 0;
+  return {
+    processed,
+    cached,
+    nonCached: processed === undefined ? undefined : Math.max(0, processed - cached)
+  };
 }
 
 function money(value: unknown, currency: unknown): string {

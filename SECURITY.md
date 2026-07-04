@@ -15,7 +15,7 @@ Windows: %LOCALAPPDATA%\Codex Usage\
 
 They are not placed in the vault or normal notes. Operational logs contain lifecycle and error messages, not raw helper output. A generated vault note contains only selected usage metrics for cross-device viewing.
 
-The plugin does not collect, copy, log, or sync credentials, browser cookies, sessions, tokens, or other secrets. The generated note contains quota, credit, aggregate cost, token count, provider setup status, platform, and refresh time; raw helper output and account identity are excluded. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
+Provider credentials entered in plugin settings are written directly to the CLI's device-local configuration with user-only permissions where supported. They are not saved in Obsidian plugin data, logs, the vault, or the synced dashboard. The generated note contains quota, credit, aggregate cost, token count, platform, and refresh time; raw helper output and account identity are excluded. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
 
 ## Reporting
 

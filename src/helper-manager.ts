@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import { ChildProcess, execFile } from "node:child_process";
 import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { get } from "node:https";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { adapters } from "./adapters";
 import { UsageCache } from "./cache";
@@ -20,6 +21,20 @@ export interface HelperStatus {
   path: string;
   installedVersion: string;
   knownGoodVersion: string;
+}
+
+export interface ProviderStatus {
+  provider: string;
+  displayName: string;
+  enabled: boolean;
+}
+
+export interface ProviderConfigInput {
+  apiKey?: string;
+  cookieHeader?: string;
+  workspaceID?: string;
+  enterpriseHost?: string;
+  region?: string;
 }
 
 export class HelperManager {
@@ -160,6 +175,50 @@ export class HelperManager {
     }
   }
 
+  async providers(): Promise<ProviderStatus[]> {
+    const { stdout } = await this.run(["config", "providers", "--format", "json"]);
+    const parsed = JSON.parse(stdout) as unknown;
+    if (!Array.isArray(parsed)) throw new CodexUsageError("PARSE_FAILED", "The helper returned invalid provider settings.");
+    return parsed.map(record).flatMap(value =>
+      typeof value.provider === "string" && typeof value.displayName === "string"
+        ? [{ provider: value.provider, displayName: value.displayName, enabled: value.enabled === true }]
+        : []);
+  }
+
+  async setProviderEnabled(provider: string, enabled: boolean): Promise<void> {
+    validateProvider(provider);
+    await this.run(["config", enabled ? "enable" : "disable", "--provider", provider]);
+  }
+
+  async configureProvider(provider: string, input: ProviderConfigInput): Promise<void> {
+    validateProvider(provider);
+    if (Object.values(input).some(value => typeof value === "string" && value.length > 100_000)) {
+      throw new CodexUsageError("PARSE_FAILED", "Provider settings are too large.");
+    }
+    const path = await configPath();
+    let config: Record<string, unknown> = {};
+    try {
+      config = record(JSON.parse(await readFile(path, "utf8")) as unknown);
+    } catch (error) {
+      if (!isMissingFile(error)) {
+        throw new CodexUsageError("PARSE_FAILED", "The existing CLI configuration is invalid.", message(error));
+      }
+    }
+    const providers = Array.isArray(config.providers) ? config.providers.map(record) : [];
+    const entry = providers.find(item => item.id === provider) ?? { id: provider };
+    for (const [key, value] of Object.entries(input)) {
+      if (typeof value === "string" && value.trim()) entry[key] = value.trim();
+    }
+    if (input.cookieHeader?.trim()) entry.cookieSource = "manual";
+    entry.enabled = true;
+    if (!providers.includes(entry)) providers.push(entry);
+    await mkdir(dirname(path), { recursive: true });
+    const next = `${path}.new`;
+    await writeFile(next, JSON.stringify({ ...config, providers }, null, 2), { mode: 0o600 });
+    if (process.platform !== "win32") await chmod(next, 0o600);
+    await rename(next, path);
+  }
+
   async cached(): Promise<UsageData | undefined> {
     await this.loadCache();
     return this.cache.stale("Showing the last successful data while the helper starts.");
@@ -270,4 +329,34 @@ function asError(error: unknown): Error {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function validateProvider(provider: string): void {
+  if (!/^[a-z0-9]+$/.test(provider)) {
+    throw new CodexUsageError("PARSE_FAILED", "Invalid provider identifier.");
+  }
+}
+
+async function configPath(): Promise<string> {
+  const override = process.env.CODEXBAR_CONFIG?.trim();
+  if (override) return override.replace(/^~(?=$|[\\/])/, homedir());
+  const xdg = process.env.XDG_CONFIG_HOME?.trim();
+  if (xdg && isAbsolute(xdg)) return join(xdg, "codexbar", "config.json");
+  const current = join(homedir(), ".config", "codexbar", "config.json");
+  try {
+    await stat(current);
+    return current;
+  } catch {
+    const legacy = join(homedir(), ".codexbar", "config.json");
+    try {
+      await stat(legacy);
+      return legacy;
+    } catch {
+      return current;
+    }
+  }
+}
+
+function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }

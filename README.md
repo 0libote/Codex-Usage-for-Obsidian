@@ -24,7 +24,7 @@ Users explicitly choose Install Helper or Update Helper. The plugin then:
 4. extracts it into the platform-native Codex Usage application-data directory;
 5. runs it locally through its dedicated adapter.
 
-Helpers are never silently updated. The dashboard currently queries Codex only. Provider-specific fields are retained in `raw`. Credentials, cookies, tokens, and browser sessions are neither copied nor synced.
+Helpers are never silently updated. The dashboard currently queries Codex only. Provider-specific fields are retained in `raw`. Provider setup entered in Obsidian is written directly to the CLI's device-local configuration and is never synced.
 
 See [Provider setup](docs/PROVIDER-SETUP.md) for managed CLI paths, provider authentication, diagnostics, and cross-device behavior.
 

@@ -146,4 +146,30 @@ describe("helper core", () => {
     expect(await logger.read()).toContain("INFO started");
     expect(await logger.read()).not.toContain("hidden");
   });
+
+  it("stores provider setup in the device-local CLI config", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-usage-provider-"));
+    const path = join(dir, "config.json");
+    const previous = process.env.CODEXBAR_CONFIG;
+    process.env.CODEXBAR_CONFIG = path;
+    try {
+      await new HelperManager(dir, "macos-arm64").configureProvider("opencode", {
+        cookieHeader: "session=example",
+        workspaceID: "wrk_example"
+      });
+      const config = JSON.parse(await readFile(path, "utf8")) as {
+        providers: Array<Record<string, unknown>>;
+      };
+      expect(config.providers).toContainEqual({
+        id: "opencode",
+        enabled: true,
+        cookieSource: "manual",
+        cookieHeader: "session=example",
+        workspaceID: "wrk_example"
+      });
+    } finally {
+      if (previous === undefined) delete process.env.CODEXBAR_CONFIG;
+      else process.env.CODEXBAR_CONFIG = previous;
+    }
+  });
 });
