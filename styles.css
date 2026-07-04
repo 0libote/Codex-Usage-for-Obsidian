@@ -84,6 +84,18 @@
   padding: 16px;
 }
 
+.codex-usage-card.is-clickable,
+.codex-usage-quota.is-clickable {
+  cursor: pointer;
+}
+
+.codex-usage-card.is-clickable:hover,
+.codex-usage-card.is-clickable:focus-visible,
+.codex-usage-quota.is-clickable:hover,
+.codex-usage-quota.is-clickable:focus-visible {
+  border-color: var(--interactive-accent);
+}
+
 .codex-usage-card-title,
 .codex-usage-card-note {
   color: var(--text-muted);
@@ -139,6 +151,41 @@
   white-space: pre-wrap;
   overflow: auto;
   overflow-wrap: anywhere;
+}
+
+.codex-usage-chart-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.codex-usage-chart-value {
+  margin-bottom: 8px;
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+}
+
+.codex-usage-chart {
+  width: 100%;
+  max-height: 260px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.codex-usage-chart polyline {
+  fill: none;
+  stroke: var(--interactive-accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.codex-usage-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
 }
 
 @media (max-width: 600px) {

@@ -11,6 +11,7 @@ import { parseManifest } from "../src/helper-manifest";
 import { detectTarget } from "../src/platform";
 import { HelperManager, verifySha256 } from "../src/helper-manager";
 import { Logger } from "../src/logging";
+import { historySample, parseHistory } from "../src/history";
 
 describe("helper core", () => {
   it("uses platform-native application data locations", () => {
@@ -171,5 +172,20 @@ describe("helper core", () => {
       if (previous === undefined) delete process.env.CODEXBAR_CONFIG;
       else process.env.CODEXBAR_CONFIG = previous;
     }
+  });
+
+  it("keeps compact numeric history samples", () => {
+    const data = adapters.mock.parse(JSON.stringify({
+      usage: { primary: { usedPercent: 42 }, secondary: { usedPercent: 8 } },
+      credits: { remaining: 12 }
+    }), {
+      provider: "codex", platform: "macos", architecture: "arm64", adapter: "mock",
+      timestamp: "2026-07-05T12:00:00.000Z", cacheAgeSeconds: 0,
+      helper: { installed: true, path: "", version: "", upstreamVersion: "", ourPackageVersion: "" }
+    });
+    expect(parseHistory([historySample(data)])).toEqual([{
+      timestamp: data.timestamp,
+      values: { sessionPercent: 42, weeklyPercent: 8, credits: 12, cachedTokens: 0 }
+    }]);
   });
 });

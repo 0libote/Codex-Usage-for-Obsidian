@@ -9,6 +9,7 @@ import { adapters } from "./adapters";
 import { UsageCache } from "./cache";
 import { CodexUsageError } from "./errors";
 import { HELPER_MANIFEST, HelperPackage } from "./helper-manifest";
+import { HistorySample, historySample, parseHistory } from "./history";
 import { Logger } from "./logging";
 import { HelperState, UsageData } from "./models";
 import { detectTarget, HelperTarget } from "./platform";
@@ -44,9 +45,12 @@ export class HelperManager {
   readonly binaryPath: string;
   private readonly metadataPath: string;
   private readonly cachePath: string;
+  private readonly historyPath: string;
   private readonly cache = new UsageCache();
   private readonly children = new Set<ChildProcess>();
   private cacheLoaded = false;
+  private historyLoaded = false;
+  private historySamples: HistorySample[] = [];
 
   constructor(dataDir: string, target = detectTarget(), private logger?: Logger) {
     this.target = target;
@@ -55,6 +59,7 @@ export class HelperManager {
     this.binaryPath = join(this.installDir, this.descriptor.binaryName);
     this.metadataPath = join(this.installDir, "installed.json");
     this.cachePath = join(dataDir, "cache", "usage.json");
+    this.historyPath = join(dataDir, "history.json");
   }
 
   async status(): Promise<HelperStatus> {
@@ -154,6 +159,7 @@ export class HelperManager {
       }
       const cached = this.cache.set(data);
       await this.persistCache(cached);
+      await this.appendHistory(data);
       await this.logger?.write("info", "Usage refresh completed.");
       return cached;
     } catch (error) {
@@ -224,6 +230,11 @@ export class HelperManager {
     return this.cache.stale("Showing the last successful data while the helper starts.");
   }
 
+  async history(): Promise<HistorySample[]> {
+    await this.loadHistory();
+    return [...this.historySamples];
+  }
+
   async clearCache(): Promise<void> {
     this.cache.clear();
     this.cacheLoaded = true;
@@ -267,6 +278,25 @@ export class HelperManager {
   private async persistCache(value: UsageData): Promise<void> {
     await mkdir(dirname(this.cachePath), { recursive: true });
     await writeFile(this.cachePath, JSON.stringify({ savedAt: Date.now(), value }));
+  }
+
+  private async loadHistory(): Promise<void> {
+    if (this.historyLoaded) return;
+    this.historyLoaded = true;
+    try {
+      this.historySamples = parseHistory(JSON.parse(await readFile(this.historyPath, "utf8")) as unknown);
+    } catch {
+      this.historySamples = [];
+    }
+  }
+
+  private async appendHistory(value: UsageData): Promise<void> {
+    await this.loadHistory();
+    const sample = historySample(value);
+    const hour = sample.timestamp.slice(0, 13);
+    if (this.historySamples.at(-1)?.timestamp.slice(0, 13) === hour) this.historySamples[this.historySamples.length - 1] = sample;
+    else this.historySamples.push(sample);
+    await writeFile(this.historyPath, JSON.stringify(this.historySamples));
   }
 }
 

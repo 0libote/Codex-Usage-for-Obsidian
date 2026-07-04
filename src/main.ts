@@ -3,6 +3,7 @@ import { ItemView, Modal, Notice, normalizePath, Plugin, PluginSettingTab, Setti
 import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus, ProviderConfigInput, ProviderStatus } from "./helper-manager";
+import { HistorySample, MetricKey } from "./history";
 import { Logger } from "./logging";
 import { DashboardSection, DEFAULT_SETTINGS, Settings, UsageData } from "./models";
 import { providerFields, providerGuide } from "./provider-setup";
@@ -12,6 +13,7 @@ const VIEW_TYPE = "codex-usage-dashboard";
 export default class CodexUsagePlugin extends Plugin {
   settings: Settings = DEFAULT_SETTINGS;
   data: UsageData | null = null;
+  history: HistorySample[] = [];
   manager!: HelperManager;
   logger!: Logger;
   private statusBar?: HTMLElement;
@@ -41,6 +43,7 @@ export default class CodexUsagePlugin extends Plugin {
     ];
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
     this.data = await this.manager.cached() ?? null;
+    this.history = await this.manager.history();
     if (this.data) this.updateStatusBar();
     const startupTimer = window.setTimeout(() => void this.startupRefresh(), 3_000);
     this.register(() => window.clearTimeout(startupTimer));
@@ -75,6 +78,7 @@ export default class CodexUsagePlugin extends Plugin {
   async refresh(bypassCache = false): Promise<void> {
     try {
       this.data = await this.manager.usage(this.settings.cacheTtlSeconds, bypassCache);
+      this.history = await this.manager.history();
       this.updateStatusBar();
       await this.writeSyncedDashboard();
       this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
@@ -208,32 +212,44 @@ class DashboardView extends ItemView {
     }
 
     const quotas = root.createDiv({ cls: "codex-usage-quotas" });
-    quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay);
-    quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay);
-    if (data.usage.monthly) quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay);
+    quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay,
+      () => this.openMetric("sessionPercent", "5 hour usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current five-hour window."));
+    quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay,
+      () => this.openMetric("weeklyPercent", "Weekly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current weekly window."));
+    if (data.usage.monthly) {
+      quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay,
+        () => this.openMetric("monthlyPercent", "Monthly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current monthly window."));
+    }
 
     const sections = new Set(this.plugin.settings.dashboardSections);
     const grid = root.createDiv({ cls: "codex-usage-grid" });
     if (sections.has("credits")) {
-      metric(grid, "Credits remaining", scalar(data.credits.remaining), "Beyond plan limits");
+      metric(grid, "Credits remaining", scalar(data.credits.remaining), "Beyond plan limits",
+        () => this.openMetric("credits", "Credits remaining", "", "Codex provider response", "Remaining credits beyond plan limits."));
     }
     if (sections.has("cost")) {
-      metric(grid, "Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode), "Estimated local cost");
-      metric(grid, "Current session", money(data.cost.sessionCostUSD, data.cost.currencyCode), "Estimated local cost");
+      metric(grid, "Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode), "Estimated local cost",
+        () => this.openMetric("cost30Days", "30-day cost", "currency", "Local Codex session logs", "Estimated cost of usage found in the last 30 days."));
+      metric(grid, "Current session", money(data.cost.sessionCostUSD, data.cost.currencyCode), "Estimated local cost",
+        () => this.openMetric("sessionCost", "Session cost", "currency", "Local Codex session logs", "Estimated cost accumulated in the current session."));
     }
     if (sections.has("tokens")) {
       const tokens = tokenUsage(data.cost);
       metric(
         grid,
-        "Non-cached tokens",
-        count(tokens.nonCached),
+        "Lifetime tokens",
+        count(tokens.processed),
         tokens.processed === undefined
           ? "Local Codex history"
-          : `${count(tokens.processed)} processed · ${count(tokens.cached)} cache reads`
+          : `${count(tokens.nonCached)} non-cached · ${count(tokens.cached)} cache reads`,
+        () => this.openMetric("tokens", "Lifetime tokens", "count", "Local Codex session logs", "Input and output tokens processed. Cache-read tokens are included in processed tokens.")
       );
-      metric(grid, "Input tokens", count(tokens.input), "Local Codex history");
-      metric(grid, "Output tokens", count(tokens.output), "Local Codex history");
-      metric(grid, "Cache hit rate", percent(tokens.cacheRate), `${count(tokens.cached)} cached tokens`);
+      metric(grid, "Input tokens", count(tokens.input), "Lifetime local history",
+        () => this.openMetric("inputTokens", "Input tokens", "count", "Local Codex session logs", "Tokens sent to models across the local history."));
+      metric(grid, "Output tokens", count(tokens.output), "Lifetime local history",
+        () => this.openMetric("outputTokens", "Output tokens", "count", "Local Codex session logs", "Tokens generated by models across the local history."));
+      metric(grid, "Cache hit rate", percent(tokens.cacheRate), `${count(tokens.cached)} cached tokens`,
+        () => this.openMetric("cacheRate", "Cache hit rate", "%", "Local Codex session logs", "Cache-read tokens divided by all processed tokens."));
     }
     if (sections.has("account")) {
       metric(grid, "Account", accountSummary(data.account), scalar(data.account.planType ?? data.account.plan) || "Local account");
@@ -245,6 +261,10 @@ class DashboardView extends ItemView {
     }
     if (!grid.childElementCount) grid.remove();
     if (sections.has("technical")) technicalDetails(root, data);
+  }
+
+  private openMetric(key: MetricKey, title: string, unit: MetricUnit, source: string, makeup: string): void {
+    new MetricModal(this.plugin, { key, title, unit, source, makeup }).open();
   }
 }
 
@@ -495,11 +515,94 @@ class TextModal extends Modal {
   }
 }
 
+type MetricUnit = "" | "%" | "count" | "currency";
+type MetricDetails = {
+  key: MetricKey;
+  title: string;
+  unit: MetricUnit;
+  source: string;
+  makeup: string;
+};
+
+class MetricModal extends Modal {
+  constructor(private plugin: CodexUsagePlugin, private metricDetails: MetricDetails) {
+    super(plugin.app);
+  }
+
+  onOpen(): void {
+    this.titleEl.setText(this.metricDetails.title);
+    const controls = this.contentEl.createDiv({ cls: "codex-usage-chart-controls" });
+    controls.createSpan({ text: "History" });
+    const range = controls.createEl("select", { attr: { "aria-label": "History range" } });
+    for (const [value, label] of [["7", "7 days"], ["30", "30 days"], ["90", "90 days"], ["0", "All time"]]) {
+      range.createEl("option", { value, text: label });
+    }
+    range.value = "30";
+    const chart = this.contentEl.createDiv();
+    const render = () => this.renderChart(chart, Number(range.value));
+    range.addEventListener("change", render);
+    render();
+
+    const details = this.contentEl.createEl("dl", { cls: "codex-usage-metadata" });
+    for (const [name, value] of [["Source", this.metricDetails.source], ["Made up of", this.metricDetails.makeup]]) {
+      details.createEl("dt", { text: name });
+      details.createEl("dd", { text: value });
+    }
+  }
+
+  private renderChart(root: HTMLElement, days: number): void {
+    root.empty();
+    const cutoff = days ? Date.now() - days * 86_400_000 : 0;
+    const points = this.plugin.history.flatMap(sample => {
+      const value = sample.values[this.metricDetails.key];
+      const timestamp = new Date(sample.timestamp).getTime();
+      return value === undefined || !Number.isFinite(timestamp) || timestamp < cutoff ? [] : [{ timestamp, value }];
+    });
+    if (!points.length) {
+      root.createEl("p", { text: "History will appear after successful refreshes.", cls: "codex-usage-muted" });
+      return;
+    }
+    const first = points[0]!;
+    const last = points.at(-1)!;
+    root.createDiv({
+      text: `${formatMetric(last.value, this.metricDetails.unit, this.plugin.data)} · tracked since ${new Date(first.timestamp).toLocaleDateString()}`,
+      cls: "codex-usage-chart-value"
+    });
+    if (points.length < 2) {
+      root.createEl("p", { text: "One point recorded. Refresh later to build the graph.", cls: "codex-usage-muted" });
+      return;
+    }
+    const width = 640;
+    const height = 220;
+    const padding = 12;
+    const min = Math.min(...points.map(point => point.value));
+    const max = Math.max(...points.map(point => point.value));
+    const timeSpan = last.timestamp - first.timestamp || 1;
+    const valueSpan = max - min || 1;
+    const coordinates = points.map(point => [
+      padding + (point.timestamp - first.timestamp) / timeSpan * (width - padding * 2),
+      height - padding - (point.value - min) / valueSpan * (height - padding * 2)
+    ]);
+    const svg = root.createSvg("svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("class", "codex-usage-chart");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${this.metricDetails.title} from ${formatMetric(min, this.metricDetails.unit, this.plugin.data)} to ${formatMetric(max, this.metricDetails.unit, this.plugin.data)}`);
+    const line = svg.createSvg("polyline");
+    line.setAttribute("points", coordinates.map(point => point.join(",")).join(" "));
+    root.createDiv({
+      text: `${new Date(first.timestamp).toLocaleDateString()} · range ${formatMetric(min, this.metricDetails.unit, this.plugin.data)}–${formatMetric(max, this.metricDetails.unit, this.plugin.data)} · ${new Date(last.timestamp).toLocaleDateString()}`,
+      cls: "codex-usage-chart-axis"
+    });
+  }
+}
+
 function quota(
   root: HTMLElement,
   title: string,
   value: Record<string, unknown>,
-  display: Settings["usageDisplay"]
+  display: Settings["usageDisplay"],
+  open?: () => void
 ): void {
   const percent = [value.percent, value.usedPercent, value.usagePercent]
     .find(item => typeof item === "number");
@@ -520,14 +623,30 @@ function quota(
   if (typeof reset === "string" || typeof reset === "number") {
     card.createDiv({ text: `Resets ${formatReset(reset)}`, cls: "codex-usage-muted" });
   }
+  if (open) makeInteractive(card, open);
 }
 
-function metric(root: HTMLElement, title: string, value: string, note: string): void {
+function metric(root: HTMLElement, title: string, value: string, note: string, open?: () => void): void {
   if (!value) return;
   const card = root.createDiv({ cls: "codex-usage-card" });
   card.createDiv({ text: title, cls: "codex-usage-card-title" });
   card.createDiv({ text: value, cls: "codex-usage-card-value" });
   card.createDiv({ text: note, cls: "codex-usage-card-note" });
+  if (open) makeInteractive(card, open);
+}
+
+function makeInteractive(card: HTMLElement, open: () => void): void {
+  card.addClass("is-clickable");
+  card.setAttr("role", "button");
+  card.setAttr("tabindex", "0");
+  card.setAttr("aria-label", `${card.textContent}. Open history`);
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", event => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
 }
 
 function accountSummary(account: Record<string, unknown>): string {
@@ -642,6 +761,13 @@ function money(value: unknown, currency: unknown): string {
     style: "currency",
     currency: typeof currency === "string" ? currency : "USD"
   }).format(value);
+}
+
+function formatMetric(value: number, unit: MetricUnit, data: UsageData | null): string {
+  if (unit === "count") return count(value);
+  if (unit === "%") return percent(value);
+  if (unit === "currency") return money(value, data?.cost.currencyCode) || String(value);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
 function formatReset(value: unknown): string {
