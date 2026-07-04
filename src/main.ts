@@ -5,6 +5,7 @@ import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus, ProviderConfigInput, ProviderStatus } from "./helper-manager";
 import { Logger } from "./logging";
 import { DashboardSection, DEFAULT_SETTINGS, Settings, UsageData } from "./models";
+import { providerFields, providerGuide } from "./provider-setup";
 
 const VIEW_TYPE = "codex-usage-dashboard";
 
@@ -230,9 +231,13 @@ class DashboardView extends ItemView {
           ? "Local Codex history"
           : `${count(tokens.processed)} processed · ${count(tokens.cached)} cache reads`
       );
+      metric(grid, "Input tokens", count(tokens.input), "Local Codex history");
+      metric(grid, "Output tokens", count(tokens.output), "Local Codex history");
+      metric(grid, "Cache hit rate", percent(tokens.cacheRate), `${count(tokens.cached)} cached tokens`);
     }
     if (sections.has("account")) {
-      metric(grid, "Account", accountSummary(data.account), "Local account");
+      metric(grid, "Account", accountSummary(data.account), scalar(data.account.planType ?? data.account.plan) || "Local account");
+      metric(grid, "Provider status", scalar(data.status.status ?? data.status.message), "Last helper response");
     }
     if (sections.has("pace")) {
       const pace = record(data.pace.secondary);
@@ -400,20 +405,25 @@ class CodexUsageSettings extends PluginSettingTab {
       await this.owner.logger.write("debug", `Provider settings unavailable: ${String(error)}`);
       return;
     }
-    const selected = providers.find(item => item.provider === this.selectedProvider) ?? providers[0];
-    if (!selected) return;
+    const configurable = providers.filter(item => providerFields(item.provider).length);
+    const selected = configurable.find(item => item.provider === this.selectedProvider) ?? configurable[0];
+    if (!selected) {
+      container.createEl("p", { text: "No providers need additional setup.", cls: "codex-usage-muted" });
+      return;
+    }
     this.selectedProvider = selected.provider;
 
     new Setting(container)
       .setName("Provider")
-      .setDesc(providerSetup(selected.provider))
+      .setDesc("Only providers that need additional details are listed.")
       .addDropdown(dropdown => {
-        for (const provider of providers) dropdown.addOption(provider.provider, provider.displayName);
+        for (const provider of configurable) dropdown.addOption(provider.provider, provider.displayName);
         dropdown.setValue(selected.provider).onChange(value => {
           this.selectedProvider = value;
           void this.renderProviders(container);
         });
       });
+    new Setting(container).setName("Setup guide").setDesc(providerGuide(selected.provider));
     new Setting(container)
       .setName(`Enable ${selected.displayName}`)
       .setDesc("Stored in the CLI configuration on this device.")
@@ -427,44 +437,18 @@ class CodexUsageSettings extends PluginSettingTab {
       }));
 
     const input: ProviderConfigInput = {};
-    if (API_KEY_PROVIDERS.has(selected.provider)) {
-      new Setting(container)
-        .setName("API key")
-        .setDesc("Leave blank to keep the current device-local key.")
-        .addText(text => {
-          text.inputEl.type = "password";
-          text.setPlaceholder("Paste API key").onChange(value => { input.apiKey = value; });
-        });
+    for (const field of providerFields(selected.provider)) {
+      const setting = new Setting(container).setName(field.name).setDesc(field.description);
+      const bind = (component: { inputEl: HTMLInputElement | HTMLTextAreaElement; setPlaceholder(value: string): unknown; onChange(callback: (value: string) => void): unknown }) => {
+        if (field.secret) component.inputEl.setAttribute("type", "password");
+        if (field.multiline && component.inputEl instanceof HTMLTextAreaElement) component.inputEl.rows = 3;
+        component.setPlaceholder(field.placeholder);
+        component.onChange(value => { input[field.key] = value; });
+      };
+      if (field.multiline) setting.addTextArea(bind);
+      else setting.addText(bind);
     }
-    if (COOKIE_PROVIDERS.has(selected.provider)) {
-      new Setting(container)
-        .setName("Manual cookie header")
-        .setDesc("Optional. Leave blank to use automatic browser import.")
-        .addTextArea(text => {
-          text.inputEl.rows = 3;
-          text.setPlaceholder("Cookie: name=value; …").onChange(value => { input.cookieHeader = value; });
-        });
-    }
-    if (selected.provider === "opencode" || selected.provider === "opencodego") {
-      new Setting(container)
-        .setName("Workspace ID")
-        .setDesc("Optional opencode workspace ID or workspace URL.")
-        .addText(text => text.setPlaceholder("Workspace ID").onChange(value => { input.workspaceID = value; }));
-    }
-    if (["llmproxy", "litellm", "clawrouter"].includes(selected.provider)) {
-      new Setting(container)
-        .setName("Base URL")
-        .setDesc("HTTPS endpoint for this provider.")
-        .addText(text => text.setPlaceholder("Provider URL").onChange(value => { input.enterpriseHost = value; }));
-    }
-    if (["minimax", "moonshot", "alibaba"].includes(selected.provider)) {
-      new Setting(container)
-        .setName("Region")
-        .setDesc("Optional provider region.")
-        .addText(text => text.setPlaceholder("Region").onChange(value => { input.region = value; }));
-    }
-    if (Object.keys(input).length || API_KEY_PROVIDERS.has(selected.provider) || COOKIE_PROVIDERS.has(selected.provider)) {
-      new Setting(container)
+    new Setting(container)
         .setName("Save provider setup")
         .setDesc("Secrets remain in the CLI configuration on this device and are not synced.")
         .addButton(button => button.setButtonText("Save").setCta().onClick(async () => {
@@ -476,7 +460,6 @@ class CodexUsageSettings extends PluginSettingTab {
             this.owner.showError(error);
           }
         }));
-    }
   }
 
   private async resetHelper(): Promise<void> {
@@ -485,31 +468,6 @@ class CodexUsageSettings extends PluginSettingTab {
     this.render();
     new Notice("Managed helper removed.");
   }
-}
-
-const API_KEY_PROVIDERS = new Set([
-  "openai", "azureopenai", "claude", "alibaba", "copilot", "zai", "minimax", "kimi", "kilo",
-  "kimik2", "moonshot", "ollama", "synthetic", "warp", "openrouter", "elevenlabs", "doubao",
-  "deepseek", "codebuff", "crof", "venice", "groq", "llmproxy", "litellm", "deepgram", "poe",
-  "chutes", "crossmodel", "clawrouter"
-]);
-
-const COOKIE_PROVIDERS = new Set([
-  "claude", "cursor", "opencode", "opencodego", "alibaba", "alibabatokenplan", "factory", "devin",
-  "minimax", "manus", "kimi", "augment", "amp", "t3chat", "ollama", "perplexity", "mimo", "sakana",
-  "abacus", "mistral", "commandcode", "qoder"
-]);
-
-function providerSetup(provider: string): string {
-  if (provider === "opencode" || provider === "opencodego") {
-    return "Sign in at opencode.ai in Chrome or Dia, or provide a manual cookie header. OpenCode Go can also read its local database.";
-  }
-  if (API_KEY_PROVIDERS.has(provider) && COOKIE_PROVIDERS.has(provider)) {
-    return "Configure an API key or use a supported browser session.";
-  }
-  if (API_KEY_PROVIDERS.has(provider)) return "Configure the provider API key on this device.";
-  if (COOKIE_PROVIDERS.has(provider)) return "Sign in with a supported browser or provide a manual cookie header.";
-  return "Enable this provider after completing its local CLI, application, OAuth, or cloud setup.";
 }
 
 class ConfirmModal extends Modal {
@@ -655,15 +613,27 @@ function tokenUsage(cost: Record<string, unknown>): {
   nonCached: number | undefined;
   processed: number | undefined;
   cached: number;
+  input: number | undefined;
+  output: number | undefined;
+  cacheRate: number | undefined;
 } {
   const totals = record(cost.totals);
   const processed = number(totals.totalTokens) ?? number(cost.last30DaysTokens);
   const cached = number(totals.cacheReadTokens) ?? 0;
+  const input = number(totals.inputTokens) ?? number(cost.inputTokens);
+  const output = number(totals.outputTokens) ?? number(cost.outputTokens);
   return {
     processed,
     cached,
-    nonCached: processed === undefined ? undefined : Math.max(0, processed - cached)
+    input,
+    output,
+    nonCached: processed === undefined ? undefined : Math.max(0, processed - cached),
+    cacheRate: processed ? cached / processed * 100 : undefined
   };
+}
+
+function percent(value: number | undefined): string {
+  return value === undefined ? "" : `${value.toFixed(1)}%`;
 }
 
 function money(value: unknown, currency: unknown): string {
