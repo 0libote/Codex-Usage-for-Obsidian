@@ -1,8 +1,11 @@
 .codex-usage-dashboard {
-  padding: var(--size-4-6);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--size-4-8);
 }
 
 .codex-usage-header,
+.codex-usage-actions,
 .codex-usage-quota-heading {
   display: flex;
   align-items: center;
@@ -11,55 +14,144 @@
 }
 
 .codex-usage-header {
-  margin-bottom: var(--size-4-6);
+  margin-bottom: var(--size-4-2);
 }
 
 .codex-usage-header h2 {
-  margin: 0;
+  margin: 0 0 2px;
+}
+
+.codex-usage-updated {
+  margin-bottom: var(--size-4-5);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.codex-usage-notice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--text-warning);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.codex-usage-quotas,
+.codex-usage-grid {
+  display: grid;
+  gap: 12px;
 }
 
 .codex-usage-quotas {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   margin-bottom: 12px;
 }
 
-.codex-usage-quota,
 .codex-usage-grid {
-  display: grid;
-}
-
-.codex-usage-grid {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .codex-usage-quota,
-.codex-usage-card {
+.codex-usage-card,
+.codex-usage-details {
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  padding: 12px;
+  border-radius: var(--radius-l);
+  background: var(--background-primary-alt);
 }
 
 .codex-usage-quota {
-  gap: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+}
+
+.codex-usage-quota-value {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
 }
 
 .codex-usage-quota progress {
   width: 100%;
+  height: 8px;
   accent-color: var(--interactive-accent);
+}
+
+.codex-usage-quota.is-low progress {
+  accent-color: var(--text-error);
+}
+
+.codex-usage-card {
+  min-height: 116px;
+  padding: 16px;
+}
+
+.codex-usage-card-title,
+.codex-usage-card-note {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.codex-usage-card-value {
+  margin: 8px 0;
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  line-height: 1.25;
+}
+
+.codex-usage-card-note {
+  font-size: var(--font-ui-smaller);
+}
+
+.codex-usage-details {
+  margin-top: 12px;
+  padding: 14px 16px;
+}
+
+.codex-usage-details > summary {
+  font-weight: var(--font-semibold);
+}
+
+.codex-usage-details details {
+  margin-top: 10px;
+}
+
+.codex-usage-metadata {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 16px 0;
+}
+
+.codex-usage-metadata dt {
+  color: var(--text-muted);
+}
+
+.codex-usage-metadata dd {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .codex-usage-muted {
   color: var(--text-muted);
 }
 
-.codex-usage-warning {
-  color: var(--text-warning);
+.codex-usage-raw {
+  max-height: 420px;
+  white-space: pre-wrap;
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 
-.codex-usage-raw {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+@media (max-width: 600px) {
+  .codex-usage-dashboard {
+    padding: var(--size-4-4);
+  }
+
+  .codex-usage-header {
+    align-items: flex-start;
+  }
+
+  .codex-usage-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
 }

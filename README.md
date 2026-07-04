@@ -8,7 +8,7 @@ This is an independent project. It is not an official CodexBar, Win-CodexBar, Ob
 
 The MVP supports Obsidian Desktop on macOS arm64/x64 and Windows x64. It is desktop-only because managed executables require Node/Electron APIs unavailable to Obsidian Mobile.
 
-The plugin shows a compact status-bar summary and a dashboard containing remaining session and weekly quota, credits, cost, tokens, pace, account data, warnings, and expandable raw output. The display can be switched from remaining to used in settings.
+The plugin shows a compact status-bar summary and a customizable dashboard. Quotas, credits, cost, tokens, and pace form the clean default; account identity, helper metadata, every normalized field, and raw output can be enabled in settings. Quotas can display remaining or used capacity.
 
 The last successful snapshot is stored locally and displayed immediately on startup. Each successful refresh also writes a limited `Codex Usage/Dashboard.md` note so the current summary remains readable through normal vault sync on Windows and mobile. Raw output, logs, and credentials are excluded from that note.
 

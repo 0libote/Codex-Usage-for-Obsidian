@@ -4,7 +4,7 @@ import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus } from "./helper-manager";
 import { Logger } from "./logging";
-import { DEFAULT_SETTINGS, Settings, UsageData } from "./models";
+import { DashboardSection, DEFAULT_SETTINGS, Settings, UsageData } from "./models";
 
 const VIEW_TYPE = "codex-usage-dashboard";
 
@@ -36,8 +36,7 @@ export default class CodexUsagePlugin extends Plugin {
       ["restart-helper", "Codex Usage: Restart Helper", () => this.restartHelper()],
       ["run-diagnostics", "Codex Usage: Run Diagnostics", () => this.diagnostics()],
       ["show-raw-output", "Codex Usage: Show Raw Output", () => this.showRaw()],
-      ["open-settings", "Codex Usage: Open Settings", () =>
-        (this.app as typeof this.app & { setting: { openTabById(id: string): void } }).setting.openTabById(this.manifest.id)]
+      ["open-settings", "Codex Usage: Open Settings", () => this.openSettings()]
     ];
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
     this.data = await this.manager.cached() ?? null;
@@ -66,6 +65,10 @@ export default class CodexUsagePlugin extends Plugin {
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
     this.app.workspace.setActiveLeaf(leaf, { focus: true });
+  }
+
+  openSettings(): void {
+    (this.app as typeof this.app & { setting: { openTabById(id: string): void } }).setting.openTabById(this.manifest.id);
   }
 
   async refresh(bypassCache = false): Promise<void> {
@@ -179,8 +182,13 @@ class DashboardView extends ItemView {
     root.empty();
     root.addClass("codex-usage-dashboard");
     const header = root.createDiv({ cls: "codex-usage-header" });
-    header.createEl("h2", { text: "Codex usage" });
-    const refresh = header.createEl("button", { text: "Refresh", cls: "mod-cta" });
+    const title = header.createDiv();
+    title.createEl("h2", { text: "Codex usage" });
+    title.createDiv({ text: "Plan limits and local usage", cls: "codex-usage-muted" });
+    const actions = header.createDiv({ cls: "codex-usage-actions" });
+    const customize = actions.createEl("button", { text: "Customize" });
+    customize.addEventListener("click", () => this.plugin.openSettings());
+    const refresh = actions.createEl("button", { text: "Refresh", cls: "mod-cta" });
     refresh.addEventListener("click", () => void this.plugin.refresh(true));
     if (!this.plugin.data) {
       root.createEl("p", {
@@ -190,29 +198,40 @@ class DashboardView extends ItemView {
       return;
     }
     const data = this.plugin.data;
+    root.createDiv({
+      text: `Updated ${new Date(data.timestamp).toLocaleString()} · ${data.provider}`,
+      cls: "codex-usage-updated"
+    });
+    for (const warning of data.warnings) {
+      root.createDiv({ text: warning, cls: "codex-usage-notice" });
+    }
+
     const quotas = root.createDiv({ cls: "codex-usage-quotas" });
     quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay);
     quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay);
     if (data.usage.monthly) quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay);
 
+    const sections = new Set(this.plugin.settings.dashboardSections);
     const grid = root.createDiv({ cls: "codex-usage-grid" });
-    for (const [label, value] of [
-      ["Credits remaining", scalar(data.credits.remaining)],
-      ["Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode)],
-      ["Session cost", money(data.cost.sessionCostUSD, data.cost.currencyCode)],
-      ["Last 30 days tokens", count(data.cost.last30DaysTokens)],
-      ["Account", summary(data.account)],
-      ["Weekly pace", summary(record(data.pace.secondary))],
-      ["Updated", new Date(data.timestamp).toLocaleString()]
-    ]) {
-      const card = grid.createDiv({ cls: "codex-usage-card" });
-      card.createEl("strong", { text: label });
-      card.createDiv({ text: value || "Not available", cls: value ? "" : "codex-usage-muted" });
+    if (sections.has("credits")) {
+      metric(grid, "Credits remaining", scalar(data.credits.remaining), "Beyond plan limits");
     }
-    for (const warning of data.warnings) root.createEl("p", { text: warning, cls: "codex-usage-warning" });
-    const details = root.createEl("details");
-    details.createEl("summary", { text: "Advanced raw output" });
-    details.createEl("pre", { text: JSON.stringify(data.raw, null, 2), cls: "codex-usage-raw" });
+    if (sections.has("cost")) {
+      metric(grid, "Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode), "Estimated local cost");
+      metric(grid, "Current session", money(data.cost.sessionCostUSD, data.cost.currencyCode), "Estimated local cost");
+    }
+    if (sections.has("tokens")) {
+      metric(grid, "Last 30 days tokens", count(data.cost.last30DaysTokens), "Local Codex history");
+    }
+    if (sections.has("account")) {
+      metric(grid, "Account", accountSummary(data.account), "Local account");
+    }
+    if (sections.has("pace")) {
+      const pace = record(data.pace.secondary);
+      metric(grid, "Weekly pace", scalar(pace.summary), pace.willLastToReset === true ? "On track" : "Projected usage");
+    }
+    if (!grid.childElementCount) grid.remove();
+    if (sections.has("technical")) technicalDetails(root, data);
   }
 }
 
@@ -269,7 +288,7 @@ class CodexUsageSettings extends PluginSettingTab {
       installAction.setName(status.state === "Missing" ? "Install helper" : "Update helper");
     }).catch(error => plugin.showError(error));
 
-    new Setting(this.containerEl).setName("Usage refresh").setHeading();
+    new Setting(this.containerEl).setName("Dashboard").setHeading();
     new Setting(this.containerEl)
       .setName("Quota display")
       .setDesc("Show the amount remaining like the codex dashboard, or the amount already used.")
@@ -281,6 +300,30 @@ class CodexUsageSettings extends PluginSettingTab {
           await plugin.saveSettings();
           this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
         }));
+    const dashboardOptions: Array<[DashboardSection, string, string]> = [
+      ["credits", "Credits", "Show credits remaining beyond plan limits."],
+      ["cost", "Cost estimates", "Show session and 30-day estimated cost."],
+      ["tokens", "Token usage", "Show token totals from local Codex history."],
+      ["pace", "Weekly pace", "Show whether current usage is likely to last until reset."],
+      ["account", "Account identity", "Show the local account email and login method."],
+      ["technical", "Technical details", "Show helper metadata, every normalized field, and raw output."]
+    ];
+    for (const [section, name, description] of dashboardOptions) {
+      new Setting(this.containerEl)
+        .setName(name)
+        .setDesc(description)
+        .addToggle(toggle => toggle
+          .setValue(plugin.settings.dashboardSections.includes(section))
+          .onChange(async enabled => {
+            plugin.settings.dashboardSections = enabled
+              ? [...plugin.settings.dashboardSections, section]
+              : plugin.settings.dashboardSections.filter(item => item !== section);
+            await plugin.saveSettings();
+            this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
+          }));
+    }
+
+    new Setting(this.containerEl).setName("Usage refresh").setHeading();
     new Setting(this.containerEl).setName("Last refresh").setDesc(plugin.data ? new Date(plugin.data.timestamp).toLocaleString() : "Never");
     new Setting(this.containerEl)
       .setName("Refresh now")
@@ -366,14 +409,6 @@ class TextModal extends Modal {
   }
 }
 
-function summary(value: Record<string, unknown>): string {
-  return Object.entries(value)
-    .filter((entry): entry is [string, string | number | boolean] =>
-      ["string", "number", "boolean"].includes(typeof entry[1]))
-    .map(([key, item]) => `${label(key)}: ${item}`)
-    .join(" · ");
-}
-
 function quota(
   root: HTMLElement,
   title: string,
@@ -384,16 +419,63 @@ function quota(
     .find(item => typeof item === "number");
   const shown = typeof percent === "number" && display === "remaining" ? 100 - percent : percent;
   const reset = value.resetsAt ?? value.resetAt;
-  const card = root.createDiv({ cls: "codex-usage-quota" });
+  const card = root.createDiv({
+    cls: `codex-usage-quota${display === "remaining" && typeof shown === "number" && shown <= 10 ? " is-low" : ""}`
+  });
   const heading = card.createDiv({ cls: "codex-usage-quota-heading" });
   heading.createEl("strong", { text: title });
-  heading.createSpan({ text: typeof shown === "number" ? `${shown}% ${display}` : "Not available" });
+  const amount = heading.createDiv();
+  amount.createSpan({ text: typeof shown === "number" ? `${shown}%` : "—", cls: "codex-usage-quota-value" });
+  amount.createSpan({ text: ` ${display}`, cls: "codex-usage-muted" });
   const progress = card.createEl("progress");
   progress.max = 100;
   progress.value = typeof shown === "number" ? Math.min(100, Math.max(0, shown)) : 0;
   progress.setAttr("aria-label", `${title}: ${shown ?? 0}% ${display}`);
   if (typeof reset === "string" || typeof reset === "number") {
     card.createDiv({ text: `Resets ${formatReset(reset)}`, cls: "codex-usage-muted" });
+  }
+}
+
+function metric(root: HTMLElement, title: string, value: string, note: string): void {
+  if (!value) return;
+  const card = root.createDiv({ cls: "codex-usage-card" });
+  card.createDiv({ text: title, cls: "codex-usage-card-title" });
+  card.createDiv({ text: value, cls: "codex-usage-card-value" });
+  card.createDiv({ text: note, cls: "codex-usage-card-note" });
+}
+
+function accountSummary(account: Record<string, unknown>): string {
+  const email = scalar(account.accountEmail);
+  const plan = scalar(account.loginMethod);
+  return [email, plan].filter(Boolean).join(" · ");
+}
+
+function technicalDetails(root: HTMLElement, data: UsageData): void {
+  const details = root.createEl("details", { cls: "codex-usage-details" });
+  details.createEl("summary", { text: "Technical details and raw data" });
+  const table = details.createEl("dl", { cls: "codex-usage-metadata" });
+  for (const [name, value] of [
+    ["Platform", `${data.platform} ${data.architecture}`],
+    ["Adapter", data.adapter],
+    ["Cache age", `${data.cacheAgeSeconds}s`],
+    ["Helper", data.helper.ourPackageVersion],
+    ["Capabilities", data.capabilities.join(", ")]
+  ]) {
+    table.createEl("dt", { text: name });
+    table.createEl("dd", { text: value });
+  }
+  for (const [name, value] of Object.entries({
+    Usage: data.usage,
+    Credits: data.credits,
+    Cost: data.cost,
+    Pace: data.pace,
+    Status: data.status,
+    Account: data.account,
+    "Raw helper output": data.raw
+  })) {
+    const section = details.createEl("details");
+    section.createEl("summary", { text: name });
+    section.createEl("pre", { text: JSON.stringify(value, null, 2), cls: "codex-usage-raw" });
   }
 }
 
@@ -443,10 +525,6 @@ function money(value: unknown, currency: unknown): string {
   }).format(value);
 }
 
-function label(value: string): string {
-  return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, first => first.toUpperCase());
-}
-
 function formatReset(value: unknown): string {
   if (typeof value !== "string" && typeof value !== "number") return "";
   const date = new Date(value);
@@ -456,12 +534,17 @@ function formatReset(value: unknown): string {
 function parseSettings(value: unknown): Settings {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ...DEFAULT_SETTINGS };
   const saved = value as Record<string, unknown>;
+  const sections = Array.isArray(saved.dashboardSections)
+    ? saved.dashboardSections.filter((item): item is DashboardSection =>
+      ["credits", "cost", "tokens", "account", "pace", "technical"].includes(String(item)))
+    : DEFAULT_SETTINGS.dashboardSections;
   return {
     cacheTtlSeconds: typeof saved.cacheTtlSeconds === "number" ? saved.cacheTtlSeconds : DEFAULT_SETTINGS.cacheTtlSeconds,
     refreshIntervalMinutes: typeof saved.refreshIntervalMinutes === "number" ? saved.refreshIntervalMinutes : DEFAULT_SETTINGS.refreshIntervalMinutes,
     logLevel: ["error", "warn", "info", "debug"].includes(String(saved.logLevel))
       ? saved.logLevel as Settings["logLevel"]
       : DEFAULT_SETTINGS.logLevel,
-    usageDisplay: saved.usageDisplay === "used" ? "used" : DEFAULT_SETTINGS.usageDisplay
+    usageDisplay: saved.usageDisplay === "used" ? "used" : DEFAULT_SETTINGS.usageDisplay,
+    dashboardSections: [...new Set(sections)]
   };
 }

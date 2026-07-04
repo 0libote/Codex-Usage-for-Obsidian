@@ -3,6 +3,7 @@ export type Capability =
   | "resetWindows" | "accountInfo" | "providerStatus" | "rawOutput" | "diagnostics";
 
 export type HelperState = "Missing" | "Installed" | "Update available" | "Running" | "Broken";
+export type DashboardSection = "credits" | "cost" | "tokens" | "account" | "pace" | "technical";
 
 export interface UsageData {
   provider: string;
@@ -38,11 +39,13 @@ export interface Settings {
   refreshIntervalMinutes: number;
   logLevel: "error" | "warn" | "info" | "debug";
   usageDisplay: "remaining" | "used";
+  dashboardSections: DashboardSection[];
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   cacheTtlSeconds: 60,
   refreshIntervalMinutes: 1,
   logLevel: "info",
-  usageDisplay: "remaining"
+  usageDisplay: "remaining",
+  dashboardSections: ["credits", "cost", "tokens", "pace"]
 };

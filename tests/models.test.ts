@@ -7,7 +7,8 @@ describe("settings", () => {
       cacheTtlSeconds: 60,
       refreshIntervalMinutes: 1,
       logLevel: "info",
-      usageDisplay: "remaining"
+      usageDisplay: "remaining",
+      dashboardSections: ["credits", "cost", "tokens", "pace"]
     });
   });
 });
