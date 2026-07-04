@@ -21,7 +21,7 @@ Users explicitly choose Install Helper or Update Helper. The plugin then:
 1. selects the package for the current platform;
 2. downloads it from the controlled URL in `helpers/manifest.json`;
 3. verifies its SHA-256 checksum;
-4. extracts it into `.obsidian/plugins/codex-usage-for-obsidian/helpers/`;
+4. extracts it into the platform-native Codex Usage application-data directory;
 5. runs it locally through its dedicated adapter.
 
 Helpers are never silently updated. Provider-specific fields are retained in `raw`. Credentials, cookies, tokens, and browser sessions are neither copied nor synced.
@@ -39,7 +39,7 @@ npm run build
 Copy or symlink this repository into:
 
 ```text
-<vault>/.obsidian/plugins/codex-usage-for-obsidian
+<vault>/.obsidian/plugins/codex-usage
 ```
 
 Ensure `main.js`, `manifest.json`, and `styles.css` are present, enable community plugins, then enable **Codex Usage for Obsidian**.
@@ -56,12 +56,13 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 - **Manifest unavailable:** Confirm GitHub is reachable and the plugin version includes a published helper manifest.
 - **Checksum failed:** The helper is not executed. Report the release URL and checksum.
 - **Command or parse failure:** Run Diagnostics, inspect Raw Output, and check Obsidian’s developer console.
-- **Logs:** Use Open Logs in plugin settings. Logs are stored locally at `.obsidian/plugins/codex-usage-for-obsidian/logs/plugin.log` and never written into notes.
+- **Logs:** Use Open Logs in plugin settings. Logs are stored beside the helper in the platform-native application-data directory and never written into notes.
+- **Application data:** macOS uses `~/Library/Application Support/Codex Usage/`; Windows uses `%LOCALAPPDATA%\Codex Usage\`.
 - **Stale usage:** A refresh failed and the last successful cache entry is being shown with a warning.
 
 ## Security and attribution
 
-See [SECURITY.md](SECURITY.md). Downloaded executables live only in the plugin data folder, not in normal vault notes. Logs stay in Obsidian’s local developer console unless the user explicitly copies/exports them.
+See [SECURITY.md](SECURITY.md). Downloaded executables and logs live in the platform-native Codex Usage application-data directory, never in the vault or normal notes.
 
 CodexBar and Win-CodexBar are separate upstream projects with their own licences. Any redistributed helper release must include its exact upstream licence and notice files under `helpers/licences/`; this repository does not claim ownership of those components.
 

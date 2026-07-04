@@ -6,13 +6,14 @@ Codex Usage for Obsidian downloads and runs a platform-specific local helper onl
 
 The plugin verifies the downloaded archive before extraction or execution. A mismatch stops installation. Updates are user-initiated and are never applied silently. Users can remove the installed helper from plugin settings.
 
-Helpers are stored under:
+Helpers and plugin runtime data are stored under:
 
 ```text
-<vault>/.obsidian/plugins/codex-usage-for-obsidian/helpers/
+macOS: ~/Library/Application Support/Codex Usage/
+Windows: %LOCALAPPDATA%\Codex Usage\
 ```
 
-They are not placed in normal notes. Operational logs are stored at `.obsidian/plugins/codex-usage-for-obsidian/logs/plugin.log`; they contain lifecycle and error messages, not raw helper output. Helper output is shown only in diagnostics/raw-output UI unless the user explicitly exports it.
+They are not placed in the vault or normal notes. Operational logs contain lifecycle and error messages, not raw helper output. Helper output is shown only in diagnostics/raw-output UI unless the user explicitly exports it.
 
 The plugin does not collect, copy, log, or sync credentials, browser cookies, sessions, tokens, or other secrets. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
 

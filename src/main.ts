@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { ItemView, Modal, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
+import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus } from "./helper-manager";
 import { Logger } from "./logging";
@@ -17,8 +18,7 @@ export default class CodexUsagePlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.settings = parseSettings(await this.loadData() as unknown);
-    const adapter = this.app.vault.adapter as typeof this.app.vault.adapter & { getBasePath(): string };
-    const dataDir = join(adapter.getBasePath(), this.app.vault.configDir, "plugins", this.manifest.id);
+    const dataDir = appDataDir();
     this.logger = new Logger(join(dataDir, "logs", "plugin.log"), this.settings.logLevel);
     this.manager = new HelperManager(dataDir, undefined, this.logger);
     this.registerView(VIEW_TYPE, leaf => new DashboardView(leaf, this));
@@ -207,32 +207,75 @@ class CodexUsageSettings extends PluginSettingTab {
   private render(): void {
     const plugin = this.owner;
     this.containerEl.empty();
-    new Setting(this.containerEl).setName("Managed helper").setHeading();
-    const helperStatus = new Setting(this.containerEl).setName("Helper status").setDesc("Loading…");
-    const platform = new Setting(this.containerEl).setName("Platform").setDesc("Loading…");
-    const installedVersion = new Setting(this.containerEl).setName("Installed helper version").setDesc("Loading…");
-    const knownVersion = new Setting(this.containerEl).setName("Known-good helper version").setDesc("Loading…");
-    const installPath = new Setting(this.containerEl).setName("Helper install path").setDesc("Loading…");
+    new Setting(this.containerEl).setName("Helper management").setHeading();
+    const helperStatus = new Setting(this.containerEl)
+      .setName("Status")
+      .setDesc("Checking the managed helper…");
+    const helperVersion = new Setting(this.containerEl)
+      .setName("Version")
+      .setDesc("Checking installed and known-good versions…");
+    const platform = new Setting(this.containerEl)
+      .setName("Platform")
+      .setDesc("Checking operating system and architecture…");
+    const installPath = new Setting(this.containerEl)
+      .setName("Application data location")
+      .setDesc(appDataDir());
+    const installAction = new Setting(this.containerEl)
+      .setName("Install or update helper")
+      .setDesc("Downloads the reviewed package and verifies its SHA-256 checksum before installation.")
+      .addButton(button => button
+        .setButtonText("Install helper")
+        .setCta()
+        .onClick(() => void plugin.installHelper()));
+    new Setting(this.containerEl)
+      .setName("Restart helper")
+      .setDesc("Stops any active helper command and immediately collects fresh usage and cost data.")
+      .addButton(button => button
+        .setButtonText("Restart")
+        .onClick(() => void plugin.restartHelper()));
+    new Setting(this.containerEl)
+      .setName("Reset helper")
+      .setDesc("Removes the managed executable, metadata, and cached usage. A new install will be required.")
+      .addButton(button => button
+        .setButtonText("Reset")
+        .onClick(() => void this.resetHelper()));
+
     void plugin.manager.status().then(status => {
       helperStatus.setDesc(status.state);
       platform.setDesc(status.target);
-      installedVersion.setDesc(status.installedVersion || "Not installed");
-      knownVersion.setDesc(status.knownGoodVersion);
+      helperVersion.setDesc(`Installed: ${status.installedVersion || "none"} · Known good: ${status.knownGoodVersion}`);
       installPath.setDesc(status.path);
+      installAction.setName(status.state === "Missing" ? "Install helper" : "Update helper");
     }).catch(error => plugin.showError(error));
-    new Setting(this.containerEl).setName("Log path").setDesc(plugin.logger.path);
+
+    new Setting(this.containerEl).setName("Usage refresh").setHeading();
     new Setting(this.containerEl).setName("Last refresh").setDesc(plugin.data ? new Date(plugin.data.timestamp).toLocaleString() : "Never");
-    new Setting(this.containerEl).setName("Cache duration").setDesc("Seconds to keep successful usage data.")
+    new Setting(this.containerEl)
+      .setName("Refresh now")
+      .setDesc("Bypasses the cache and collects current usage and cost data.")
+      .addButton(button => button
+        .setButtonText("Refresh")
+        .setCta()
+        .onClick(() => void plugin.refresh(true)));
+    new Setting(this.containerEl).setName("Cache duration").setDesc("Seconds to reuse successful data before calling the helper again.")
       .addText(text => text.setValue(String(plugin.settings.cacheTtlSeconds)).onChange(async value => {
         plugin.settings.cacheTtlSeconds = Math.max(0, Number(value) || 0);
         await plugin.saveSettings();
       }));
-    new Setting(this.containerEl).setName("Refresh interval").setDesc("Minutes between automatic refreshes.")
+    new Setting(this.containerEl).setName("Automatic refresh").setDesc("Minutes between background refreshes while Obsidian is running.")
       .addText(text => text.setValue(String(plugin.settings.refreshIntervalMinutes)).onChange(async value => {
         plugin.settings.refreshIntervalMinutes = Math.max(1, Number(value) || 1);
         await plugin.saveSettings();
         plugin.scheduleRefresh();
       }));
+    new Setting(this.containerEl)
+      .setName("Clear cached usage")
+      .setDesc("Removes the last successful snapshot. The helper installation is not affected.")
+      .addButton(button => button
+        .setButtonText("Clear cache")
+        .onClick(() => void plugin.clearCache()));
+
+    new Setting(this.containerEl).setName("Diagnostics").setHeading();
     new Setting(this.containerEl).setName("Log level").addDropdown(dropdown => dropdown
       .addOptions({ error: "Error", warn: "Warning", info: "Info", debug: "Debug" })
       .setValue(plugin.settings.logLevel)
@@ -240,21 +283,29 @@ class CodexUsageSettings extends PluginSettingTab {
         plugin.settings.logLevel = value as Settings["logLevel"];
         await plugin.saveSettings();
       }));
-    const actions = this.containerEl.createDiv({ cls: "codex-usage-actions" });
-    for (const [label, action] of [
-      ["Install Helper", () => plugin.installHelper()],
-      ["Update Helper", () => plugin.installHelper()],
-      ["Restart Helper", () => plugin.restartHelper()],
-      ["Run Diagnostics", () => plugin.diagnostics()],
-      ["Show Raw Output", () => plugin.showRaw()],
-      ["Open Logs", () => plugin.showLogs()],
-      ["Clear Logs", async () => { await plugin.logger.clear(); new Notice("Codex usage logs cleared."); }],
-      ["Reset Helper", async () => { await plugin.manager.remove(); await plugin.clearCache(); this.render(); }],
-      ["Clear Cache", () => plugin.clearCache()]
-    ] as Array<[string, () => void | Promise<void>]>) {
-      const button = actions.createEl("button", { text: label });
-      button.addEventListener("click", () => void action());
-    }
+    new Setting(this.containerEl).setName("Log file").setDesc(plugin.logger.path)
+      .addButton(button => button.setButtonText("Open logs").onClick(() => void plugin.showLogs()))
+      .addButton(button => button.setButtonText("Clear logs").onClick(() => void this.clearLogs()));
+    new Setting(this.containerEl)
+      .setName("Helper diagnostics")
+      .setDesc("Runs the helper's redacted diagnostic command.")
+      .addButton(button => button.setButtonText("Run diagnostics").onClick(() => void plugin.diagnostics()));
+    new Setting(this.containerEl)
+      .setName("Raw helper output")
+      .setDesc("Shows the complete last usage and cost response for troubleshooting.")
+      .addButton(button => button.setButtonText("Show raw output").onClick(() => plugin.showRaw()));
+  }
+
+  private async clearLogs(): Promise<void> {
+    await this.owner.logger.clear();
+    new Notice("Codex usage logs cleared.");
+  }
+
+  private async resetHelper(): Promise<void> {
+    await this.owner.manager.remove();
+    await this.owner.clearCache();
+    this.render();
+    new Notice("Managed helper removed.");
   }
 }
 

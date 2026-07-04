@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { adapters } from "../src/adapters";
+import { appDataDir } from "../src/app-data";
 import { UsageCache } from "../src/cache";
 import { CodexUsageError } from "../src/errors";
 import { parseManifest } from "../src/helper-manifest";
@@ -12,6 +13,13 @@ import { HelperManager, verifySha256 } from "../src/helper-manager";
 import { Logger } from "../src/logging";
 
 describe("helper core", () => {
+  it("uses platform-native application data locations", () => {
+    expect(appDataDir("darwin", {}, "/Users/test")).toBe("/Users/test/Library/Application Support/Codex Usage");
+    expect(appDataDir("win32", { LOCALAPPDATA: "C:\\Users\\test\\AppData\\Local" }, "C:\\Users\\test"))
+      .toBe("C:\\Users\\test\\AppData\\Local\\Codex Usage");
+    expect(() => appDataDir("linux", {}, "/home/test")).toThrow("Unsupported platform");
+  });
+
   it("detects supported targets", () => {
     expect(detectTarget("darwin", "arm64")).toBe("macos-arm64");
     expect(detectTarget("darwin", "x64")).toBe("macos-x64");

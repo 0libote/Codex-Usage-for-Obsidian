@@ -96,3 +96,11 @@
 - Added: Official `eslint-plugin-obsidianmd` checks to the release gate.
 - Checks: official Obsidian lint (zero errors), typecheck, 14 tests, production build, and diff check passed.
 - Compatibility: retained imperative settings for Obsidian 1.5.0; declarative searchable settings require 1.13.0 and remain a non-blocking recommendation.
+
+## 2026-07-04 — Native application data and settings redesign
+
+- Changed: Moved helpers, metadata, cache, and logs out of the vault into platform-native Codex Usage application data.
+- Changed: Rebuilt settings into helper management, usage refresh, and diagnostics sections using native Setting rows and buttons.
+- Files: application-data resolver, plugin UI, styles, tests, README, and security documentation.
+- Checks: official Obsidian lint (zero errors), typecheck, 15 tests, production build, diff check, and live macOS install/usage/cost verification passed.
+- Compatibility: existing beta helper files inside old plugin folders are not deleted automatically.
