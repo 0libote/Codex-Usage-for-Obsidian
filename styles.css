@@ -1,0 +1,30 @@
+.codex-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.codex-usage-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: 12px;
+}
+
+.codex-usage-muted {
+  color: var(--text-muted);
+}
+
+.codex-usage-warning {
+  color: var(--text-warning);
+}
+
+.codex-usage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.codex-usage-raw {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

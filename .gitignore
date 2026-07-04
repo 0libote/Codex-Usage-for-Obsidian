@@ -1,0 +1,8 @@
+node_modules/
+main.js
+main.js.map
+coverage/
+*.log
+.DS_Store
+.env*
+helpers/downloads/

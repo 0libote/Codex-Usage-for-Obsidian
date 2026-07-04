@@ -1,0 +1,11 @@
+{
+  "id": "codex-usage-for-obsidian",
+  "name": "Codex Usage for Obsidian",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Display CodexBar-style AI coding usage data inside Obsidian using managed local helpers.",
+  "author": "TBD",
+  "authorUrl": "",
+  "fundingUrl": "",
+  "isDesktopOnly": true
+}
