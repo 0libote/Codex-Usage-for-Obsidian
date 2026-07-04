@@ -1,0 +1,7 @@
+{
+  "provider": "codex",
+  "session": { "usedPercent": 31, "resetAt": "20:00" },
+  "weekly": { "usedPercent": 11 },
+  "account": { "plan": "example" },
+  "windowsExtra": { "preserved": true }
+}

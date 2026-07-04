@@ -1,0 +1,35 @@
+name: Release Obsidian Plugin
+
+on:
+  push:
+    tags: ["*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Validate release
+        run: |
+          test "$GITHUB_REF_NAME" = "$(node -p "require('./manifest.json').version")" || { echo "Tag must match manifest.json version"; exit 1; }
+          node -e "const v=require('./manifest.json').version;if(!require('./versions.json')[v])throw Error('versions.json is missing '+v)"
+          test -f main.js && test -f manifest.json && test -f versions.json
+      - name: Create release zip
+        run: zip codex-usage-for-obsidian.zip main.js manifest.json versions.json styles.css
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            main.js
+            manifest.json
+            versions.json
+            styles.css
+            codex-usage-for-obsidian.zip

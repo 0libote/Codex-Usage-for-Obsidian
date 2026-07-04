@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -42,6 +42,20 @@ describe("helper core", () => {
     expect(data.usage.session).toEqual({ percent: 42 });
     expect(data.raw).toMatchObject({ providerSpecific: { untouched: true } });
     expect(data.capabilities).toContain("rawOutput");
+  });
+
+  it.each([
+    ["macos", "codexbar_macos"],
+    ["windows", "wincodexbar_windows"]
+  ] as const)("parses the %s fixture", async (platform, adapterId) => {
+    const raw = await readFile(join(process.cwd(), "fixtures", platform, "usage.sample.json"), "utf8");
+    const data = adapters[adapterId].parse(raw, {
+      provider: "codex", platform: platform === "macos" ? "macos" : "windows",
+      architecture: "x64", adapter: adapterId, timestamp: "", cacheAgeSeconds: 0,
+      helper: { installed: true, path: "", version: "", upstreamVersion: "", ourPackageVersion: "" }
+    });
+    expect(Object.keys(data.usage.session).length).toBeGreaterThan(0);
+    expect(data.raw).toHaveProperty(platform === "macos" ? "macosExtra" : "windowsExtra");
   });
 
   it("returns stale cache with a warning", () => {

@@ -6,3 +6,4 @@ coverage/
 .DS_Store
 .env*
 helpers/downloads/
+.helper-update-pr.md

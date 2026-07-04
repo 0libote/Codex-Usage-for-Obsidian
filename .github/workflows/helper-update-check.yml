@@ -1,0 +1,37 @@
+name: Check Helper Updates
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check and stage upstream helper updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-helper-updates.mjs
+      - run: npm test
+      - run: npm run build
+      - name: Create review PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: automation/helper-updates
+          delete-branch: true
+          commit-message: "chore: update managed Codex helpers"
+          title: "chore: update managed Codex helpers"
+          body-path: .helper-update-pr.md
+          labels: dependencies,helper-update
