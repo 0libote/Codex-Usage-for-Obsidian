@@ -1,13 +1,54 @@
+.codex-usage-dashboard {
+  padding: var(--size-4-6);
+}
+
+.codex-usage-header,
+.codex-usage-quota-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.codex-usage-header {
+  margin-bottom: var(--size-4-6);
+}
+
+.codex-usage-header h2 {
+  margin: 0;
+}
+
+.codex-usage-quotas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.codex-usage-quota,
 .codex-usage-grid {
   display: grid;
+}
+
+.codex-usage-grid {
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
 }
 
+.codex-usage-quota,
 .codex-usage-card {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   padding: 12px;
+}
+
+.codex-usage-quota {
+  gap: 8px;
+}
+
+.codex-usage-quota progress {
+  width: 100%;
+  accent-color: var(--interactive-accent);
 }
 
 .codex-usage-muted {

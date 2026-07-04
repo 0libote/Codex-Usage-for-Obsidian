@@ -41,6 +41,6 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   cacheTtlSeconds: 60,
-  refreshIntervalMinutes: 5,
+  refreshIntervalMinutes: 1,
   logLevel: "info"
 };

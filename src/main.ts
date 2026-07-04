@@ -26,6 +26,7 @@ export default class CodexUsagePlugin extends Plugin {
     this.statusBar = this.addStatusBarItem();
     this.statusBar.setText("Codex —");
     this.statusBar.addEventListener("click", () => void this.openDashboard());
+    this.addRibbonIcon("gauge", "Open codex usage", () => void this.openDashboard());
 
     const commands: Array<[string, string, () => void | Promise<void>]> = [
       ["open-dashboard", "Codex Usage: Open Dashboard", () => this.openDashboard()],
@@ -60,10 +61,10 @@ export default class CodexUsagePlugin extends Plugin {
   async openDashboard(): Promise<void> {
     let leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) {
-      leaf = this.app.workspace.getRightLeaf(false) ?? undefined;
-      await leaf?.setViewState({ type: VIEW_TYPE, active: true });
+      leaf = this.app.workspace.getLeaf("tab");
+      await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
-    if (leaf) this.app.workspace.setActiveLeaf(leaf, { focus: true });
+    this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 
   async refresh(bypassCache = false): Promise<void> {
@@ -163,7 +164,11 @@ class DashboardView extends ItemView {
   render(): void {
     const root = this.containerEl.children[1] as HTMLElement;
     root.empty();
-    root.createEl("h2", { text: "Codex usage" });
+    root.addClass("codex-usage-dashboard");
+    const header = root.createDiv({ cls: "codex-usage-header" });
+    header.createEl("h2", { text: "Codex usage" });
+    const refresh = header.createEl("button", { text: "Refresh", cls: "mod-cta" });
+    refresh.addEventListener("click", () => void this.plugin.refresh(true));
     if (!this.plugin.data) {
       root.createEl("p", {
         text: "Install the managed helper in settings to display usage.",
@@ -172,11 +177,14 @@ class DashboardView extends ItemView {
       return;
     }
     const data = this.plugin.data;
+    const quotas = root.createDiv({ cls: "codex-usage-quotas" });
+    quota(quotas, "Session", data.usage.session);
+    quota(quotas, "Weekly", data.usage.weekly);
+    if (data.usage.monthly) quota(quotas, "Monthly", data.usage.monthly);
+
     const grid = root.createDiv({ cls: "codex-usage-grid" });
     for (const [label, value] of [
       ["Provider", data.provider],
-      ["Session usage", summary(data.usage.session)],
-      ["Weekly usage", summary(data.usage.weekly)],
       ["Credits", summary(data.credits)],
       ["Cost", summary(data.cost)],
       ["Account / status", summary({ ...data.account, ...data.status })],
@@ -336,6 +344,23 @@ class TextModal extends Modal {
 
 function summary(value: Record<string, unknown>): string {
   return Object.entries(value).map(([key, item]) => `${key}: ${String(item)}`).join(" · ");
+}
+
+function quota(root: HTMLElement, label: string, value: Record<string, unknown>): void {
+  const percent = [value.percent, value.usedPercent, value.usagePercent]
+    .find(item => typeof item === "number");
+  const reset = value.resetsAt ?? value.resetAt;
+  const card = root.createDiv({ cls: "codex-usage-quota" });
+  const heading = card.createDiv({ cls: "codex-usage-quota-heading" });
+  heading.createEl("strong", { text: label });
+  heading.createSpan({ text: typeof percent === "number" ? `${percent}% used` : "Not available" });
+  const progress = card.createEl("progress");
+  progress.max = 100;
+  progress.value = typeof percent === "number" ? Math.min(100, Math.max(0, percent)) : 0;
+  progress.setAttr("aria-label", `${label} usage`);
+  if (typeof reset === "string" || typeof reset === "number") {
+    card.createDiv({ text: `Resets ${reset}`, cls: "codex-usage-muted" });
+  }
 }
 
 function parseSettings(value: unknown): Settings {
