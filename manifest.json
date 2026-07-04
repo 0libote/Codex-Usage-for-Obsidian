@@ -3,7 +3,7 @@
   "name": "Codex Usage",
   "version": "0.1.3",
   "minAppVersion": "1.5.0",
-  "description": "Display CodexBar-style AI coding usage data inside Obsidian using managed local helpers.",
+  "description": "Display CodexBar-style AI coding usage data using managed local helpers.",
   "author": "0libote",
   "authorUrl": "https://github.com/0libote",
   "fundingUrl": "",

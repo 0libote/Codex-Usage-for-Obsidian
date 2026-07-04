@@ -83,3 +83,9 @@
 - Files: licence, package metadata, README, release description.
 - Checks: typecheck, 14 tests, production build, and diff check passed.
 - Next: rerun community review after GitHub recognizes the licence.
+
+## 2026-07-04 — Community description compliance
+
+- Changed: Removed the redundant product name from the plugin manifest description.
+- Why: Community directory descriptions must not include the word “Obsidian.”
+- Checks: pending project checks and release 0.1.3.
