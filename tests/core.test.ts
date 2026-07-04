@@ -32,7 +32,7 @@ describe("helper core", () => {
 
   it("reports missing, broken, and update-available helper states", async () => {
     const dir = await mkdtemp(join(tmpdir(), "codex-usage-state-"));
-    const manager = new HelperManager(dir);
+    const manager = new HelperManager(dir, "macos-arm64");
     expect((await manager.status()).state).toBe("Missing");
     await mkdir(manager.installDir, { recursive: true });
     await writeFile(manager.binaryPath, "");

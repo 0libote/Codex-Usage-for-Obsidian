@@ -62,3 +62,12 @@
 - Checks: Live managed download/install/execute/remove; normalized session and weekly fields; typecheck; 11 tests; production build; diff check.
 - Known issues: None identified in the macOS helper path.
 - Next: Commit and publish the pinned manifest.
+
+## 2026-07-04 — Linux CI portability
+
+- Changed: Made the detected helper target injectable for deterministic tests.
+- Why: CI correctly rejected construction of a desktop helper manager on its unsupported Linux host.
+- Files: helper manager and state test.
+- Checks: Pending local and Linux CI rerun.
+- Known issues: Linux remains intentionally unsupported by the plugin.
+- Next: Run checks and publish the CI fix.

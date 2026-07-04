@@ -22,14 +22,16 @@ export interface HelperStatus {
 }
 
 export class HelperManager {
-  readonly target = detectTarget();
-  readonly descriptor: HelperPackage = HELPER_MANIFEST.helpers[this.target];
+  readonly target: HelperTarget;
+  readonly descriptor: HelperPackage;
   readonly installDir: string;
   readonly binaryPath: string;
   private readonly metadataPath: string;
   private readonly cache = new UsageCache();
 
-  constructor(dataDir: string) {
+  constructor(dataDir: string, target = detectTarget()) {
+    this.target = target;
+    this.descriptor = HELPER_MANIFEST.helpers[target];
     this.installDir = join(dataDir, "helpers", this.target);
     this.binaryPath = join(this.installDir, this.descriptor.binaryName);
     this.metadataPath = join(this.installDir, "installed.json");
