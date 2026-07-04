@@ -24,9 +24,9 @@ Users explicitly choose Install Helper or Update Helper. The plugin then:
 4. extracts it into the platform-native Codex Usage application-data directory;
 5. runs it locally through its dedicated adapter.
 
-Helpers are never silently updated. Codex and OpenRouter are queried separately; OpenRouter requires an API key configured in CodexBar. Provider-specific fields are retained in `raw`. Credentials, cookies, tokens, and browser sessions are neither copied nor synced.
+Helpers are never silently updated. The dashboard currently queries Codex only. Provider-specific fields are retained in `raw`. Credentials, cookies, tokens, and browser sessions are neither copied nor synced.
 
-See [Provider setup](docs/PROVIDER-SETUP.md) for managed CLI paths, Codex authentication, OpenRouter configuration, diagnostics, and cross-device behavior.
+See [Provider setup](docs/PROVIDER-SETUP.md) for managed CLI paths, provider authentication, diagnostics, and cross-device behavior.
 
 ## Development
 

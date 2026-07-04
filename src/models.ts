@@ -30,7 +30,6 @@ export interface UsageData {
   account: Record<string, unknown>;
   capabilities: Capability[];
   warnings: string[];
-  additionalProviders: Array<Record<string, unknown>>;
   raw: unknown;
 }
 

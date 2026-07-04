@@ -8,7 +8,7 @@ export interface Adapter {
   usageArgs: string[];
   costArgs?: string[];
   diagnosticsArgs: string[];
-  parse(raw: string, context: Omit<UsageData, "usage" | "credits" | "cost" | "pace" | "status" | "account" | "capabilities" | "warnings" | "additionalProviders" | "raw">): UsageData;
+  parse(raw: string, context: Omit<UsageData, "usage" | "credits" | "cost" | "pace" | "status" | "account" | "capabilities" | "warnings" | "raw">): UsageData;
   parseCost(raw: string): { cost: Record<string, unknown>; raw: unknown };
 }
 
@@ -51,7 +51,6 @@ function normalise(adapter: Adapter, rawText: string, context: Parameters<Adapte
     },
     capabilities: adapter.capabilities,
     warnings: [],
-    additionalProviders: [],
     raw: parsed.raw
   };
 }

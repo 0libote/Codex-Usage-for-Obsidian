@@ -25,13 +25,6 @@
   margin-bottom: 12px;
 }
 
-.codex-usage-provider {
-  margin-top: var(--size-4-6);
-  padding: 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-}
-
 .codex-usage-quota,
 .codex-usage-grid {
   display: grid;

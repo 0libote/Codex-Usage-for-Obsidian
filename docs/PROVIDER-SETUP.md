@@ -2,7 +2,7 @@
 
 Codex Usage runs its managed CodexBar-compatible CLI in the background. Authentication must be available to that CLI, not only to another terminal or application.
 
-The bundled CLI currently exposes the providers below. The plugin dashboard currently collects **Codex and OpenRouter**; the remaining entries document CLI capability and setup for future dashboard support.
+The bundled CLI currently exposes the providers below. The plugin dashboard currently collects **Codex only**; the remaining entries document CLI capability and setup for future dashboard support.
 
 ## Managed CLI paths
 
@@ -106,25 +106,6 @@ Remove-Variable key, secret
 | Chutes (`chutes`) | Store a Chutes API key with `set-api-key`. |
 | CrossModel (`crossmodel`) | Store a CrossModel API key with `set-api-key`. |
 | ClawRouter (`clawrouter`) | Store a ClawRouter API key with `set-api-key`; a custom base URL is optional. |
-
-## OpenRouter example
-
-macOS Apple silicon:
-
-```zsh
-read -s "key?OpenRouter API key: "
-printf %s "$key" | "$HOME/Library/Application Support/Codex Usage/helpers/macos-arm64/CodexBarCLI" config set-api-key --provider openrouter --stdin
-unset key
-```
-
-Windows PowerShell:
-
-```powershell
-$secret = Read-Host "OpenRouter API key" -AsSecureString
-$key = [Net.NetworkCredential]::new("", $secret).Password
-$key | & "$env:LOCALAPPDATA\Codex Usage\helpers\windows-x64\codexbar-cli.exe" config set-api-key --provider openrouter --stdin
-Remove-Variable key, secret
-```
 
 ## Verify and diagnose
 
