@@ -9,6 +9,7 @@ import { CodexUsageError } from "../src/errors";
 import { parseManifest } from "../src/helper-manifest";
 import { detectTarget } from "../src/platform";
 import { HelperManager, verifySha256 } from "../src/helper-manager";
+import { Logger } from "../src/logging";
 
 describe("helper core", () => {
   it("detects supported targets", () => {
@@ -77,6 +78,17 @@ describe("helper core", () => {
     expect(adapters.wincodexbar_windows.usageArgs).toContain("codex");
   });
 
+  it("normalises cost output while preserving the full payload", () => {
+    const raw = [
+      { provider: "codex", sessionCostUSD: 1.25, totals: { totalTokens: 42 } },
+      { provider: "claude", sessionCostUSD: 2 }
+    ];
+    expect(adapters.codexbar_macos.parseCost(JSON.stringify(raw))).toEqual({
+      cost: raw[0],
+      raw
+    });
+  });
+
   it.each([
     ["macos", "codexbar_macos"],
     ["windows", "wincodexbar_windows"]
@@ -102,5 +114,28 @@ describe("helper core", () => {
     expect(cache.stale("failed")?.warnings).toContain("failed");
     cache.clear();
     expect(cache.stale("failed")).toBeUndefined();
+  });
+
+  it("loads persisted data before starting a helper", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-usage-persisted-"));
+    const value = adapters.mock.parse("{}", {
+      provider: "codex", platform: "macos", architecture: "arm64", adapter: "mock",
+      timestamp: "2026-07-04T00:00:00.000Z", cacheAgeSeconds: 0,
+      helper: { installed: true, path: "", version: "", upstreamVersion: "", ourPackageVersion: "" }
+    });
+    await mkdir(join(dir, "cache"), { recursive: true });
+    await writeFile(join(dir, "cache", "usage.json"), JSON.stringify({ savedAt: Date.now(), value }));
+    expect((await new HelperManager(dir, "macos-arm64").cached())?.warnings).toContain(
+      "Showing the last successful data while the helper starts."
+    );
+  });
+
+  it("writes readable local logs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-usage-log-"));
+    const logger = new Logger(join(dir, "plugin.log"), "info");
+    await logger.write("debug", "hidden");
+    await logger.write("info", "started");
+    expect(await logger.read()).toContain("INFO started");
+    expect(await logger.read()).not.toContain("hidden");
   });
 });

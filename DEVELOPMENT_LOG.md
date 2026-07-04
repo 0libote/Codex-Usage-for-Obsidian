@@ -2,72 +2,59 @@
 
 ## 2026-07-04 — Plugin shell
 
-- Changed: Added a buildable desktop-only Obsidian plugin with settings, status bar, dashboard placeholder, and commands.
-- Why: Establish the smallest usable shell before adding executable management.
-- Files: `package.json`, TypeScript/build config, plugin manifest, styles, `src/`.
-- Checks: `npm install`, `npm run build`, settings-default test.
-- Known issues: Helper actions are placeholders; no usage is collected yet.
-- Next: Add the helper manifest, platform detection, secure installer, and adapters.
+- Added the desktop-only Obsidian plugin, settings, status bar, dashboard, commands, build configuration, and settings-default test.
+- Checks: build and initial test passed.
+- Outcome: completed; helper placeholders were replaced in later milestones.
 
 ## 2026-07-04 — Managed helper core
 
-- Changed: Added target detection, validated helper manifest, checksum-gated atomic installer, adapters, structured errors, normalisation, raw preservation, cache fallback, dashboard cards, settings status/actions, and explicit install confirmation.
-- Why: Keep downloads and every upstream command assumption behind one helper boundary.
-- Files: `helpers/`, helper/adapters/cache model modules, plugin UI, core tests.
-- Checks: `npm run typecheck`, `npm test` (6 passing), `npm run build`.
-- Known issues: Manifest release coordinates and checksums are intentionally placeholders, so installation fails safely until controlled helper assets exist.
-- Next: Add fixtures, workflows, documentation, and release/update automation.
+- Added platform detection, the validated helper manifest, checksum-gated atomic installation, adapters, structured errors, raw-output preservation, caching, settings controls, and explicit install confirmation.
+- Checks: typecheck, six tests, and build passed.
+- Outcome: completed; release placeholders were replaced with pinned helper 0.38.1 assets.
 
 ## 2026-07-04 — Tests, automation, and documentation
 
-- Changed: Added macOS/Windows parser fixtures, CI, plugin release automation, conservative upstream helper update PR automation, README, and security policy.
-- Why: Make plugin releases reproducible and helper changes reviewable without silently trusting upstream binaries.
-- Files: `fixtures/`, `.github/workflows/`, `scripts/`, `README.md`, `SECURITY.md`.
-- Checks: helper script syntax, workflow YAML parse, `npm run typecheck`, `npm test` (8 passing), `npm run build`.
-- Known issues: A maintainer must publish real controlled helper assets, replace manifest placeholders, add exact upstream licence files, and manually smoke-test candidates.
-- Next: Publish first reviewed helper candidates, then test in an Obsidian desktop vault.
+- Added macOS/Windows fixtures, CI, plugin release automation, upstream update automation, README, and security policy.
+- Checks: workflow syntax, typecheck, eight tests, and build passed.
+- Outcome: completed; exact upstream licence files and controlled assets were subsequently published.
 
 ## 2026-07-04 — Platform hardening
 
-- Changed: Preserved archive extensions for Windows extraction, distinguished broken helper metadata from a missing binary, declared adapter cost commands, and tested helper state transitions.
-- Why: PowerShell requires `.zip` input and settings must report repairable installations accurately.
-- Files: helper manager, adapters, tests.
-- Checks: `npm run typecheck`, `npm test` (9 passing), `npm run build`, helper script syntax, `git diff --check`.
-- Known issues: Real helper command syntax must be validated against the first reviewed upstream packages.
-- Next: Publish and smoke-test controlled helper candidates.
+- Preserved Windows archive extensions, distinguished broken from missing installations, centralized verified adapter commands, and tested helper state transitions.
+- Checks: typecheck, nine tests, build, script syntax, and diff check passed.
+- Outcome: completed.
 
 ## 2026-07-04 — Real helper packaging
 
-- Changed: Verified upstream 0.38.1 release assets and CLI documentation, corrected commands and quota parsing, added exact upstream licences, and added a cross-platform helper packaging/release workflow.
-- Why: macOS ships standalone CLIs while Windows embeds its CLI in the signed installer; packaging must follow each actual release shape.
-- Files: adapters, fixtures/tests, licence notices, helper publishing workflow.
-- Checks: macOS arm64 CLI version/help, typecheck, 10 tests, production build, workflow YAML parse, diff check; pending Windows runner smoke test.
-- Known issues: Manifest remains unchanged until all three controlled packages are produced and their checksums recorded.
-- Next: Run the helper publishing workflow, update manifest checksums, then exercise install and usage locally.
+- Verified upstream CodexBar and Win-CodexBar 0.38.1 releases and CLI documentation.
+- Added exact upstream licences and cross-platform helper packaging.
+- Checks: macOS CLI version/help, Windows runner extraction/version/help, typecheck, ten tests, build, and workflow syntax passed.
+- Outcome: controlled helper packages were published for all supported targets.
 
 ## 2026-07-04 — Helper release 0.38.1
 
-- Changed: Published separate controlled helper packages for macOS arm64/x64 and Windows x64, then pinned their release URLs and SHA-256 values.
-- Why: Users need verified one-click installation without separately installing either upstream project.
-- Files: helper manifest, compatibility notes, README.
-- Checks: GitHub run 28711696520 passed all macOS, Windows, packaging, and release jobs.
-- Known issues: Provider usage requires the user's existing local Codex authentication.
-- Next: Run the plugin installer and usage adapter end to end on macOS.
+- Published separate helper assets in this repository for macOS arm64/x64 and Windows x64.
+- Pinned every URL and SHA-256 value in `helpers/manifest.json`.
+- Checks: GitHub run 28711696520 passed all packaging and release jobs.
+- Outcome: one-click helper installation enabled.
 
 ## 2026-07-04 — Live output compatibility
 
-- Changed: Accepted CodexBar's current JSON array output while preserving every payload in `raw`.
-- Why: The controlled helper installed correctly, but live 0.38.1 output wraps provider payloads in an array.
-- Files: adapter parser and compatibility test.
-- Checks: Live managed download/install/execute/remove; normalized session and weekly fields; typecheck; 11 tests; production build; diff check.
-- Known issues: None identified in the macOS helper path.
-- Next: Commit and publish the pinned manifest.
+- Added support for CodexBar’s JSON array output while retaining every provider payload in `raw`.
+- Checks: live macOS download/install/execute/remove, typecheck, eleven tests, build, and diff check passed.
+- Outcome: session and weekly usage normalized successfully from live data.
 
 ## 2026-07-04 — Linux CI portability
 
-- Changed: Made the detected helper target injectable for deterministic tests.
-- Why: CI correctly rejected construction of a desktop helper manager on its unsupported Linux host.
-- Files: helper manager and state test.
-- Checks: Pending local and Linux CI rerun.
-- Known issues: Linux remains intentionally unsupported by the plugin.
-- Next: Run checks and publish the CI fix.
+- Made the helper target injectable so tests do not attempt to run an unsupported Linux helper.
+- Checks: local suite and GitHub CI run 28711788551 passed.
+- Outcome: CI green; Linux remains intentionally outside plugin runtime support.
+
+## 2026-07-04 — Cost, persisted cache, lifecycle, and logs
+
+- Added actual cost-command collection, full raw cost preservation, persisted last-good data, delayed startup refresh, managed child-process shutdown/restart, and local plugin logs.
+- Updated author metadata to 0libote.
+- Files: helper manager, adapters, cache, logger, plugin UI, tests, manifest, README.
+- Checks: live usage/cost collection, raw cost preservation, persisted-cache reload, file logging, typecheck, 14 tests, production build, script/workflow syntax, and diff check passed.
+- Current limitation: cost data depends on locally available Codex history; usage depends on the user’s existing Codex authentication.
+- Next: commit, push, and publish plugin 0.1.0.

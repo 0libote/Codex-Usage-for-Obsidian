@@ -9,6 +9,7 @@ export interface Adapter {
   costArgs?: string[];
   diagnosticsArgs: string[];
   parse(raw: string, context: Omit<UsageData, "usage" | "credits" | "cost" | "pace" | "status" | "account" | "capabilities" | "warnings" | "raw">): UsageData;
+  parseCost(raw: string): { cost: Record<string, unknown>; raw: unknown };
 }
 
 function parseJson(raw: string): { payload: Record<string, unknown>; raw: unknown } {
@@ -50,6 +51,11 @@ function normalise(adapter: Adapter, rawText: string, context: Parameters<Adapte
   };
 }
 
+function normaliseCost(rawText: string): { cost: Record<string, unknown>; raw: unknown } {
+  const parsed = parseJson(rawText);
+  return { cost: parsed.payload, raw: parsed.raw };
+}
+
 const baseCapabilities: Capability[] = [
   "usage", "sessionQuota", "weeklyQuota", "resetWindows",
   "accountInfo", "providerStatus", "rawOutput", "diagnostics"
@@ -63,7 +69,8 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     usageArgs: ["usage", "--provider", "codex", "--format", "json", "--json-only"],
     costArgs: ["cost", "--provider", "codex", "--format", "json"],
     diagnosticsArgs: ["diagnose", "--provider", "codex", "--format", "json", "--redact"],
-    parse(raw, context) { return normalise(this, raw, context); }
+    parse(raw, context) { return normalise(this, raw, context); },
+    parseCost: normaliseCost
   },
   wincodexbar_windows: {
     id: "wincodexbar_windows",
@@ -72,7 +79,8 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     usageArgs: ["usage", "--provider", "codex", "--format", "json"],
     costArgs: ["cost", "--provider", "codex", "--format", "json"],
     diagnosticsArgs: ["diagnose", "--provider", "codex", "--format", "json"],
-    parse(raw, context) { return normalise(this, raw, context); }
+    parse(raw, context) { return normalise(this, raw, context); },
+    parseCost: normaliseCost
   },
   mock: {
     id: "mock",
@@ -80,7 +88,8 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     versionArgs: [],
     usageArgs: [],
     diagnosticsArgs: [],
-    parse(raw, context) { return normalise(this, raw, context); }
+    parse(raw, context) { return normalise(this, raw, context); },
+    parseCost: normaliseCost
   }
 };
 

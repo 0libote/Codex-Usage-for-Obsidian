@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { ItemView, Modal, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus } from "./helper-manager";
+import { Logger } from "./logging";
 import { DEFAULT_SETTINGS, Settings, UsageData } from "./models";
 
 const VIEW_TYPE = "codex-usage-dashboard";
@@ -10,13 +11,16 @@ export default class CodexUsagePlugin extends Plugin {
   settings: Settings = DEFAULT_SETTINGS;
   data: UsageData | null = null;
   manager!: HelperManager;
+  logger!: Logger;
   private statusBar?: HTMLElement;
   private refreshTimer?: number;
 
   async onload(): Promise<void> {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     const adapter = this.app.vault.adapter as typeof this.app.vault.adapter & { getBasePath(): string };
-    this.manager = new HelperManager(join(adapter.getBasePath(), this.app.vault.configDir, "plugins", this.manifest.id));
+    const dataDir = join(adapter.getBasePath(), this.app.vault.configDir, "plugins", this.manifest.id);
+    this.logger = new Logger(join(dataDir, "logs", "plugin.log"), this.settings.logLevel);
+    this.manager = new HelperManager(dataDir, undefined, this.logger);
     this.registerView(VIEW_TYPE, leaf => new DashboardView(leaf, this));
     this.addSettingTab(new CodexUsageSettings(this));
     this.statusBar = this.addStatusBarItem();
@@ -28,18 +32,29 @@ export default class CodexUsagePlugin extends Plugin {
       ["refresh-usage", "Codex Usage: Refresh Usage", () => this.refresh(true)],
       ["install-helper", "Codex Usage: Install Helper", () => this.installHelper()],
       ["update-helper", "Codex Usage: Update Helper", () => this.installHelper()],
-      ["restart-helper", "Codex Usage: Restart Helper", () => this.refresh(true)],
+      ["restart-helper", "Codex Usage: Restart Helper", () => this.restartHelper()],
       ["run-diagnostics", "Codex Usage: Run Diagnostics", () => this.diagnostics()],
       ["show-raw-output", "Codex Usage: Show Raw Output", () => this.showRaw()],
       ["open-settings", "Codex Usage: Open Settings", () =>
         (this.app as typeof this.app & { setting: { openTabById(id: string): void } }).setting.openTabById(this.manifest.id)]
     ];
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
+    this.data = await this.manager.cached() ?? null;
+    if (this.data) this.updateStatusBar();
+    const startupTimer = window.setTimeout(() => void this.startupRefresh(), 3_000);
+    this.register(() => window.clearTimeout(startupTimer));
     this.scheduleRefresh();
+    await this.logger.write("info", "Plugin loaded; helper startup delayed by 3 seconds.");
+  }
+
+  onunload(): void {
+    this.manager.stop();
+    void this.logger.write("info", "Plugin unloaded; active helper processes stopped.");
   }
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    this.logger.setLevel(this.settings.logLevel);
   }
 
   async openDashboard(): Promise<void> {
@@ -82,11 +97,22 @@ export default class CodexUsagePlugin extends Plugin {
     }
   }
 
+  async restartHelper(): Promise<void> {
+    this.manager.stop();
+    await this.logger.write("info", "Helper restart requested.");
+    await this.refresh(true);
+  }
+
+  async showLogs(): Promise<void> {
+    new TextModal(this, "Codex Usage logs", await this.logger.read()).open();
+  }
+
   showRaw(): void {
     new TextModal(this, "Codex Usage raw output", JSON.stringify(this.data?.raw ?? {}, null, 2)).open();
   }
 
   async clearCache(): Promise<void> {
+    await this.manager.clearCache();
     this.data = null;
     this.statusBar?.setText("Codex —");
     this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
@@ -99,7 +125,7 @@ export default class CodexUsagePlugin extends Plugin {
     this.statusBar?.setText(`Codex ${typeof percent === "number" ? `${percent}%` : "ready"}${reset ? ` · resets ${String(reset)}` : ""}`);
   }
 
-  private scheduleRefresh(): void {
+  scheduleRefresh(): void {
     if (this.refreshTimer) window.clearInterval(this.refreshTimer);
     this.refreshTimer = window.setInterval(
       () => void this.refresh(),
@@ -108,9 +134,14 @@ export default class CodexUsagePlugin extends Plugin {
     this.register(() => window.clearInterval(this.refreshTimer));
   }
 
+  private async startupRefresh(): Promise<void> {
+    if ((await this.manager.status()).state !== "Missing") await this.refresh(true);
+  }
+
   private showError(error: unknown): void {
     const message = error instanceof CodexUsageError ? `${error.message}${error.details ? ` ${error.details}` : ""}` : String(error);
     console.error("Codex Usage for Obsidian:", error);
+    void this.logger.write("error", error instanceof CodexUsageError ? error.code : "Unexpected plugin error.");
     new Notice(message, 10_000);
   }
 }
@@ -178,6 +209,7 @@ class CodexUsageSettings extends PluginSettingTab {
     new Setting(this.containerEl).setName("Installed helper version").setDesc(status.installedVersion || "Not installed");
     new Setting(this.containerEl).setName("Known-good helper version").setDesc(status.knownGoodVersion);
     new Setting(this.containerEl).setName("Helper install path").setDesc(status.path);
+    new Setting(this.containerEl).setName("Log path").setDesc(plugin.logger.path);
     new Setting(this.containerEl).setName("Last refresh").setDesc(plugin.data ? new Date(plugin.data.timestamp).toLocaleString() : "Never");
     new Setting(this.containerEl).setName("Cache TTL").setDesc("Seconds to keep successful usage data.")
       .addText(text => text.setValue(String(plugin.settings.cacheTtlSeconds)).onChange(async value => {
@@ -188,6 +220,7 @@ class CodexUsageSettings extends PluginSettingTab {
       .addText(text => text.setValue(String(plugin.settings.refreshIntervalMinutes)).onChange(async value => {
         plugin.settings.refreshIntervalMinutes = Math.max(1, Number(value) || 1);
         await plugin.saveSettings();
+        plugin.scheduleRefresh();
       }));
     new Setting(this.containerEl).setName("Log level").addDropdown(dropdown => dropdown
       .addOptions({ error: "Error", warn: "Warning", info: "Info", debug: "Debug" })
@@ -200,10 +233,11 @@ class CodexUsageSettings extends PluginSettingTab {
     for (const [label, action] of [
       ["Install Helper", () => plugin.installHelper()],
       ["Update Helper", () => plugin.installHelper()],
-      ["Restart Helper", () => plugin.refresh(true)],
+      ["Restart Helper", () => plugin.restartHelper()],
       ["Run Diagnostics", () => plugin.diagnostics()],
       ["Show Raw Output", () => plugin.showRaw()],
-      ["Open Logs", () => new TextModal(plugin, "Codex Usage logs", "Runtime errors are written to the Obsidian developer console.").open()],
+      ["Open Logs", () => plugin.showLogs()],
+      ["Clear Logs", async () => { await plugin.logger.clear(); new Notice("Codex Usage logs cleared."); }],
       ["Reset Helper", async () => { await plugin.manager.remove(); await plugin.clearCache(); this.display(); }],
       ["Clear Cache", () => plugin.clearCache()]
     ] as Array<[string, () => void | Promise<void>]>) {

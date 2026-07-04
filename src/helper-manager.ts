@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
+import { ChildProcess, execFile } from "node:child_process";
 import { chmod, copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { get } from "node:https";
 import { dirname, join } from "node:path";
@@ -8,6 +8,7 @@ import { adapters } from "./adapters";
 import { UsageCache } from "./cache";
 import { CodexUsageError } from "./errors";
 import { HELPER_MANIFEST, HelperPackage } from "./helper-manifest";
+import { Logger } from "./logging";
 import { HelperState, UsageData } from "./models";
 import { detectTarget, HelperTarget } from "./platform";
 
@@ -27,14 +28,18 @@ export class HelperManager {
   readonly installDir: string;
   readonly binaryPath: string;
   private readonly metadataPath: string;
+  private readonly cachePath: string;
   private readonly cache = new UsageCache();
+  private readonly children = new Set<ChildProcess>();
+  private cacheLoaded = false;
 
-  constructor(dataDir: string, target = detectTarget()) {
+  constructor(dataDir: string, target = detectTarget(), private logger?: Logger) {
     this.target = target;
     this.descriptor = HELPER_MANIFEST.helpers[target];
     this.installDir = join(dataDir, "helpers", this.target);
     this.binaryPath = join(this.installDir, this.descriptor.binaryName);
     this.metadataPath = join(this.installDir, "installed.json");
+    this.cachePath = join(dataDir, "cache", "usage.json");
   }
 
   async status(): Promise<HelperStatus> {
@@ -88,11 +93,13 @@ export class HelperManager {
   }
 
   async remove(): Promise<void> {
+    this.stop();
     await rm(this.installDir, { recursive: true, force: true });
-    this.cache.clear();
+    await this.clearCache();
   }
 
   async usage(ttlSeconds: number, bypassCache = false): Promise<UsageData> {
+    await this.loadCache();
     if (!bypassCache) {
       const cached = this.cache.get(ttlSeconds);
       if (cached) return cached;
@@ -101,8 +108,9 @@ export class HelperManager {
       const status = await this.status();
       if (status.state === "Missing") throw new CodexUsageError("HELPER_NOT_INSTALLED", "Install the managed helper first.");
       const adapter = adapters[this.descriptor.adapter];
-      const { stdout } = await execute(this.binaryPath, adapter.usageArgs, { timeout: 30_000, windowsHide: true, maxBuffer: 5_000_000 });
-      return this.cache.set(adapter.parse(stdout, {
+      await this.logger?.write("debug", "Refreshing usage.");
+      const { stdout } = await this.run(adapter.usageArgs);
+      let data = adapter.parse(stdout, {
         provider: "codex",
         platform: this.target.startsWith("macos") ? "macos" : "windows",
         architecture: this.target.endsWith("arm64") ? "arm64" : "x64",
@@ -116,9 +124,24 @@ export class HelperManager {
           upstreamVersion: this.descriptor.upstreamVersion,
           ourPackageVersion: this.descriptor.ourPackageVersion
         }
-      }));
+      });
+      if (adapter.costArgs) {
+        try {
+          const result = adapter.parseCost((await this.run(adapter.costArgs)).stdout);
+          data = { ...data, cost: result.cost, raw: { usage: data.raw, cost: result.raw } };
+        } catch (error) {
+          const warning = "Cost refresh failed. Run diagnostics for details.";
+          data.warnings.push(warning);
+          await this.logger?.write("warn", warning);
+        }
+      }
+      const cached = this.cache.set(data);
+      await this.persistCache(cached);
+      await this.logger?.write("info", "Usage refresh completed.");
+      return cached;
     } catch (error) {
       const stale = this.cache.stale(`Refresh failed; showing stale data. ${message(error)}`);
+      await this.logger?.write("error", "Usage refresh failed.");
       if (stale) return stale;
       if (error instanceof CodexUsageError) throw error;
       throw new CodexUsageError("COMMAND_FAILED", "The helper command failed.", message(error));
@@ -128,11 +151,59 @@ export class HelperManager {
   async diagnostics(): Promise<string> {
     const adapter = adapters[this.descriptor.adapter];
     try {
-      const { stdout, stderr } = await execute(this.binaryPath, adapter.diagnosticsArgs, { timeout: 30_000, windowsHide: true });
+      const { stdout, stderr } = await this.run(adapter.diagnosticsArgs);
       return [stdout, stderr].filter(Boolean).join("\n");
     } catch (error) {
       throw new CodexUsageError("COMMAND_FAILED", "Helper diagnostics failed.", message(error));
     }
+  }
+
+  async cached(): Promise<UsageData | undefined> {
+    await this.loadCache();
+    return this.cache.stale("Showing the last successful data while the helper starts.");
+  }
+
+  async clearCache(): Promise<void> {
+    this.cache.clear();
+    this.cacheLoaded = true;
+    await rm(this.cachePath, { force: true });
+    await this.logger?.write("info", "Cache cleared.");
+  }
+
+  stop(): void {
+    for (const child of this.children) child.kill();
+    this.children.clear();
+  }
+
+  private run(args: string[]): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = execFile(this.binaryPath, args, {
+        timeout: 30_000,
+        windowsHide: true,
+        maxBuffer: 5_000_000
+      }, (error, stdout, stderr) => {
+        this.children.delete(child);
+        error ? reject(error) : resolve({ stdout, stderr });
+      });
+      this.children.add(child);
+    });
+  }
+
+  private async loadCache(): Promise<void> {
+    if (this.cacheLoaded) return;
+    this.cacheLoaded = true;
+    try {
+      const stored = JSON.parse(await readFile(this.cachePath, "utf8")) as { savedAt: number; value: UsageData };
+      this.cache.restore(stored.value, stored.savedAt);
+      await this.logger?.write("debug", "Loaded persisted usage cache.");
+    } catch {
+      // No prior successful data.
+    }
+  }
+
+  private async persistCache(value: UsageData): Promise<void> {
+    await mkdir(dirname(this.cachePath), { recursive: true });
+    await writeFile(this.cachePath, JSON.stringify({ savedAt: Date.now(), value }));
   }
 }
 

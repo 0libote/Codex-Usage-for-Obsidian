@@ -20,6 +20,12 @@ export class UsageCache {
     return this.withAge()!;
   }
 
+  restore(value: UsageData, savedAt: number): UsageData {
+    this.value = value;
+    this.savedAt = savedAt;
+    return this.withAge()!;
+  }
+
   clear(): void {
     this.value = undefined;
     this.savedAt = 0;

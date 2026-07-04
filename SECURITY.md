@@ -12,7 +12,7 @@ Helpers are stored under:
 <vault>/.obsidian/plugins/codex-usage-for-obsidian/helpers/
 ```
 
-They are not placed in normal notes. Runtime errors are written to Obsidian's local developer console; helper output is shown only in diagnostics/raw-output UI unless the user explicitly exports it.
+They are not placed in normal notes. Operational logs are stored at `.obsidian/plugins/codex-usage-for-obsidian/logs/plugin.log`; they contain lifecycle and error messages, not raw helper output. Helper output is shown only in diagnostics/raw-output UI unless the user explicitly exports it.
 
 The plugin does not collect, copy, log, or sync credentials, browser cookies, sessions, tokens, or other secrets. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
 

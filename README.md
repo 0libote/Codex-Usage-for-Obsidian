@@ -10,6 +10,8 @@ The MVP supports Obsidian Desktop on macOS arm64/x64 and Windows x64. It is desk
 
 The plugin shows a compact status-bar summary and a dashboard containing session and weekly usage, optional credits/cost/reset/account data, cache age, helper details, warnings, and expandable raw output.
 
+The last successful snapshot is stored locally under the plugin directory and displayed immediately on startup. A fresh one-shot helper run begins three seconds after Obsidian loads, avoiding work on the critical startup path. Usage and cost helper processes terminate after each refresh and are stopped if the plugin unloads.
+
 Managed helper 0.38.1 packages are published separately for all supported targets and pinned by SHA-256 in the bundled manifest.
 
 ## Managed helpers
@@ -54,6 +56,7 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 - **Manifest unavailable:** Confirm GitHub is reachable and the plugin version includes a published helper manifest.
 - **Checksum failed:** The helper is not executed. Report the release URL and checksum.
 - **Command or parse failure:** Run Diagnostics, inspect Raw Output, and check Obsidian’s developer console.
+- **Logs:** Use Open Logs in plugin settings. Logs are stored locally at `.obsidian/plugins/codex-usage-for-obsidian/logs/plugin.log` and never written into notes.
 - **Stale usage:** A refresh failed and the last successful cache entry is being shown with a warning.
 
 ## Security and attribution
