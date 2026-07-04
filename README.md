@@ -46,7 +46,7 @@ Ensure `main.js`, `manifest.json`, and `styles.css` are present, enable communit
 
 ## Releases
 
-Set the same version in `package.json`, `manifest.json`, and `versions.json`, run all checks, commit, then push a tag exactly matching the manifest version. `release.yml` publishes only the standard Obsidian files and a zip; helper binaries remain in separate helper releases.
+Push a semantic-version tag such as `0.2.0` or `v0.2.0`. `release.yml` removes an optional `v`, synchronizes `package.json`, `package-lock.json`, `manifest.json`, and `versions.json`, commits changed metadata to the default branch, runs tests/checks/build, attests every release file, and creates or updates the normalized release tag. Helper binaries remain in separate helper releases.
 
 The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`. For an unambiguous upstream CLI asset it builds a candidate package, calculates SHA-256, uploads it to a draft helper release, updates compatibility metadata, runs checks, and opens a pull request. It never auto-merges. A reviewer must test each target and publish the helper release.
 

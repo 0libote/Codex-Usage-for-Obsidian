@@ -58,3 +58,12 @@
 - Checks: live usage/cost collection, raw cost preservation, persisted-cache reload, file logging, typecheck, 14 tests, production build, script/workflow syntax, and diff check passed.
 - Current limitation: cost data depends on locally available Codex history; usage depends on the user’s existing Codex authentication.
 - Next: publish plugin 0.1.1; 0.1.0 already contains the earlier MVP build.
+
+## 2026-07-04 — Tag-driven plugin releases
+
+- Changed: Release tags now synchronize all version files, run tests/checks/build, commit metadata changes, attest plugin artifacts, and create or update the normalized release.
+- Why: A tag is the single release-version input while Obsidian still receives its standard files.
+- Files: release workflow, package scripts, README.
+- Checks: workflow YAML parse, typecheck, 14 tests, production build, and diff check passed.
+- Current limitation: the workflow requires permission to push version metadata to the default branch.
+- Next: verify the complete automation with the next release tag.

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
+    "check": "tsc --noEmit",
     "dev": "node esbuild.config.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
