@@ -57,4 +57,4 @@
 - Files: helper manager, adapters, cache, logger, plugin UI, tests, manifest, README.
 - Checks: live usage/cost collection, raw cost preservation, persisted-cache reload, file logging, typecheck, 14 tests, production build, script/workflow syntax, and diff check passed.
 - Current limitation: cost data depends on locally available Codex history; usage depends on the user’s existing Codex authentication.
-- Next: commit, push, and publish plugin 0.1.0.
+- Next: publish plugin 0.1.1; 0.1.0 already contains the earlier MVP build.
