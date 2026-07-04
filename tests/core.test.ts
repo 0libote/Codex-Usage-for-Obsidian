@@ -55,6 +55,14 @@ describe("helper core", () => {
     expect(data.capabilities).toContain("rawOutput");
   });
 
+  it("constructs verified upstream command lines in one place", () => {
+    expect(adapters.codexbar_macos.usageArgs).toEqual([
+      "usage", "--provider", "codex", "--format", "json", "--json-only"
+    ]);
+    expect(adapters.codexbar_macos.diagnosticsArgs[0]).toBe("diagnose");
+    expect(adapters.wincodexbar_windows.usageArgs).toContain("codex");
+  });
+
   it.each([
     ["macos", "codexbar_macos"],
     ["windows", "wincodexbar_windows"]

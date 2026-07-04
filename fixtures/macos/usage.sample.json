@@ -1,8 +1,8 @@
 {
   "provider": "codex",
   "usage": {
-    "session": { "percent": 42, "resetsAt": "18:00" },
-    "weekly": { "percent": 17 }
+    "primary": { "usedPercent": 42, "resetsAt": "18:00" },
+    "secondary": { "usedPercent": 17 }
   },
   "credits": { "remaining": 25 },
   "cost": { "currency": "USD", "amount": 3.2 },

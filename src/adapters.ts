@@ -27,17 +27,13 @@ function normalise(adapter: Adapter, rawText: string, context: Parameters<Adapte
     raw[key] && typeof raw[key] === "object" && !Array.isArray(raw[key])
       ? raw[key] as Record<string, unknown> : {};
   const usage = object("usage");
+  const nested = Object.keys(usage).length ? usage : raw;
   return {
     ...context,
     usage: {
-      session: object("session").valueOf() as Record<string, unknown>,
-      weekly: object("weekly").valueOf() as Record<string, unknown>,
-      monthly: Object.keys(object("monthly")).length ? object("monthly") : null,
-      ...(Object.keys(usage).length ? {
-        session: (usage.session as Record<string, unknown>) ?? {},
-        weekly: (usage.weekly as Record<string, unknown>) ?? {},
-        monthly: (usage.monthly as Record<string, unknown>) ?? null
-      } : {})
+      session: record(nested.session ?? nested.primary),
+      weekly: record(nested.weekly ?? nested.secondary),
+      monthly: nullableRecord(nested.monthly ?? nested.tertiary)
     },
     credits: object("credits"),
     cost: object("cost"),
@@ -60,18 +56,18 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     id: "codexbar_macos",
     capabilities: [...baseCapabilities, "cost", "credits"],
     versionArgs: ["--version"],
-    usageArgs: ["usage", "--json"],
-    costArgs: ["cost", "--json"],
-    diagnosticsArgs: ["diagnostics", "--json"],
+    usageArgs: ["usage", "--provider", "codex", "--format", "json", "--json-only"],
+    costArgs: ["cost", "--provider", "codex", "--format", "json"],
+    diagnosticsArgs: ["diagnose", "--provider", "codex", "--format", "json", "--redact"],
     parse(raw, context) { return normalise(this, raw, context); }
   },
   wincodexbar_windows: {
     id: "wincodexbar_windows",
     capabilities: [...baseCapabilities, "cost", "credits"],
     versionArgs: ["--version"],
-    usageArgs: ["usage", "--json"],
-    costArgs: ["cost", "--json"],
-    diagnosticsArgs: ["diagnostics", "--json"],
+    usageArgs: ["usage", "--provider", "codex", "--format", "json"],
+    costArgs: ["cost", "--provider", "codex", "--format", "json"],
+    diagnosticsArgs: ["diagnose", "--provider", "codex", "--format", "json"],
     parse(raw, context) { return normalise(this, raw, context); }
   },
   mock: {
@@ -83,3 +79,12 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     parse(raw, context) { return normalise(this, raw, context); }
   }
 };
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function nullableRecord(value: unknown): Record<string, unknown> | null {
+  const result = record(value);
+  return Object.keys(result).length ? result : null;
+}

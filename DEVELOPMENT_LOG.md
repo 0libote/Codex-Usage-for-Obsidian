@@ -35,3 +35,12 @@
 - Checks: `npm run typecheck`, `npm test` (9 passing), `npm run build`, helper script syntax, `git diff --check`.
 - Known issues: Real helper command syntax must be validated against the first reviewed upstream packages.
 - Next: Publish and smoke-test controlled helper candidates.
+
+## 2026-07-04 — Real helper packaging
+
+- Changed: Verified upstream 0.38.1 release assets and CLI documentation, corrected commands and quota parsing, added exact upstream licences, and added a cross-platform helper packaging/release workflow.
+- Why: macOS ships standalone CLIs while Windows embeds its CLI in the signed installer; packaging must follow each actual release shape.
+- Files: adapters, fixtures/tests, licence notices, helper publishing workflow.
+- Checks: macOS arm64 CLI version/help, typecheck, 10 tests, production build, workflow YAML parse, diff check; pending Windows runner smoke test.
+- Known issues: Manifest remains unchanged until all three controlled packages are produced and their checksums recorded.
+- Next: Run the helper publishing workflow, update manifest checksums, then exercise install and usage locally.
