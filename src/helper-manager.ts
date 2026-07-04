@@ -137,6 +137,10 @@ export class HelperManager {
           await this.logger?.write("warn", warning);
         }
       }
+      const openRouterArgs = adapter.usageArgs.map(arg => arg === "codex" ? "openrouter" : arg);
+      const openRouter = await this.run(openRouterArgs, true);
+      const openRouterPayload = providerPayload(openRouter.stdout, "openrouter");
+      if (openRouterPayload) data.additionalProviders.push(openRouterPayload);
       const cached = this.cache.set(data);
       await this.persistCache(cached);
       await this.logger?.write("info", "Usage refresh completed.");
@@ -177,7 +181,7 @@ export class HelperManager {
     this.children.clear();
   }
 
-  private run(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  private run(args: string[], allowFailure = false): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const child = execFile(this.binaryPath, args, {
         timeout: 30_000,
@@ -185,7 +189,7 @@ export class HelperManager {
         maxBuffer: 5_000_000
       }, (error, stdout, stderr) => {
         this.children.delete(child);
-        if (error) reject(asError(error));
+        if (error && !allowFailure) reject(asError(error));
         else resolve({ stdout, stderr });
       });
       this.children.add(child);
@@ -270,4 +274,14 @@ function asError(error: unknown): Error {
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function providerPayload(raw: string, provider: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    const values = Array.isArray(parsed) ? parsed : [parsed];
+    return values.map(record).find(value => value.provider === provider);
+  } catch {
+    return;
+  }
 }

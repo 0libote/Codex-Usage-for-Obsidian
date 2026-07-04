@@ -6,7 +6,8 @@ describe("settings", () => {
     expect(DEFAULT_SETTINGS).toEqual({
       cacheTtlSeconds: 60,
       refreshIntervalMinutes: 1,
-      logLevel: "info"
+      logLevel: "info",
+      usageDisplay: "remaining"
     });
   });
 });

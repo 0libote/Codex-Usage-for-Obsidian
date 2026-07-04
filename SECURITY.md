@@ -13,9 +13,9 @@ macOS: ~/Library/Application Support/Codex Usage/
 Windows: %LOCALAPPDATA%\Codex Usage\
 ```
 
-They are not placed in the vault or normal notes. Operational logs contain lifecycle and error messages, not raw helper output. Helper output is shown only in diagnostics/raw-output UI unless the user explicitly exports it.
+They are not placed in the vault or normal notes. Operational logs contain lifecycle and error messages, not raw helper output. A generated vault note contains only selected usage metrics for cross-device viewing.
 
-The plugin does not collect, copy, log, or sync credentials, browser cookies, sessions, tokens, or other secrets. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
+The plugin does not collect, copy, log, or sync credentials, browser cookies, sessions, tokens, or other secrets. The generated note contains quota, credit, aggregate cost, token count, provider setup status, platform, and refresh time; raw helper output and account identity are excluded. Upstream helpers may independently access locally configured provider state; review their security documentation before installation.
 
 ## Reporting
 

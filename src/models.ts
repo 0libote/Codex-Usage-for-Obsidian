@@ -30,6 +30,7 @@ export interface UsageData {
   account: Record<string, unknown>;
   capabilities: Capability[];
   warnings: string[];
+  additionalProviders: Array<Record<string, unknown>>;
   raw: unknown;
 }
 
@@ -37,10 +38,12 @@ export interface Settings {
   cacheTtlSeconds: number;
   refreshIntervalMinutes: number;
   logLevel: "error" | "warn" | "info" | "debug";
+  usageDisplay: "remaining" | "used";
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   cacheTtlSeconds: 60,
   refreshIntervalMinutes: 1,
-  logLevel: "info"
+  logLevel: "info",
+  usageDisplay: "remaining"
 };

@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { ItemView, Modal, Notice, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from "obsidian";
+import { ItemView, Modal, Notice, normalizePath, Plugin, PluginSettingTab, Setting, TFile, WorkspaceLeaf } from "obsidian";
 import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus } from "./helper-manager";
@@ -41,7 +41,10 @@ export default class CodexUsagePlugin extends Plugin {
     ];
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
     this.data = await this.manager.cached() ?? null;
-    if (this.data) this.updateStatusBar();
+    if (this.data) {
+      this.data.additionalProviders ??= [];
+      this.updateStatusBar();
+    }
     const startupTimer = window.setTimeout(() => void this.startupRefresh(), 3_000);
     this.register(() => window.clearTimeout(startupTimer));
     this.scheduleRefresh();
@@ -56,6 +59,7 @@ export default class CodexUsagePlugin extends Plugin {
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
     this.logger.setLevel(this.settings.logLevel);
+    await this.writeSyncedDashboard();
   }
 
   async openDashboard(): Promise<void> {
@@ -71,6 +75,7 @@ export default class CodexUsagePlugin extends Plugin {
     try {
       this.data = await this.manager.usage(this.settings.cacheTtlSeconds, bypassCache);
       this.updateStatusBar();
+      await this.writeSyncedDashboard();
       this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
     } catch (error) {
       this.showError(error);
@@ -127,6 +132,17 @@ export default class CodexUsagePlugin extends Plugin {
     this.statusBar?.setText(`Codex ${typeof percent === "number" ? `${percent}%` : "ready"}${resetText}`);
   }
 
+  private async writeSyncedDashboard(): Promise<void> {
+    if (!this.data) return;
+    const path = normalizePath("Codex Usage/Dashboard.md");
+    const folder = path.slice(0, path.lastIndexOf("/"));
+    if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+    const content = dashboardMarkdown(this.data, this.settings.usageDisplay);
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (file instanceof TFile) await this.app.vault.modify(file, content);
+    else await this.app.vault.create(path, content);
+  }
+
   scheduleRefresh(): void {
     if (this.refreshTimer) window.clearInterval(this.refreshTimer);
     this.refreshTimer = window.setInterval(
@@ -178,24 +194,25 @@ class DashboardView extends ItemView {
     }
     const data = this.plugin.data;
     const quotas = root.createDiv({ cls: "codex-usage-quotas" });
-    quota(quotas, "Session", data.usage.session);
-    quota(quotas, "Weekly", data.usage.weekly);
-    if (data.usage.monthly) quota(quotas, "Monthly", data.usage.monthly);
+    quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay);
+    quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay);
+    if (data.usage.monthly) quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay);
 
     const grid = root.createDiv({ cls: "codex-usage-grid" });
     for (const [label, value] of [
-      ["Provider", data.provider],
-      ["Credits", summary(data.credits)],
-      ["Cost", summary(data.cost)],
-      ["Account / status", summary({ ...data.account, ...data.status })],
-      ["Last refresh", new Date(data.timestamp).toLocaleString()],
-      ["Cache age", `${data.cacheAgeSeconds}s`],
-      ["Active helper", `${data.adapter} ${data.helper.ourPackageVersion}`]
+      ["Credits remaining", scalar(data.credits.remaining)],
+      ["Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode)],
+      ["Session cost", money(data.cost.sessionCostUSD, data.cost.currencyCode)],
+      ["Last 30 days tokens", count(data.cost.last30DaysTokens)],
+      ["Account", summary(data.account)],
+      ["Weekly pace", summary(record(data.pace.secondary))],
+      ["Updated", new Date(data.timestamp).toLocaleString()]
     ]) {
       const card = grid.createDiv({ cls: "codex-usage-card" });
       card.createEl("strong", { text: label });
       card.createDiv({ text: value || "Not available", cls: value ? "" : "codex-usage-muted" });
     }
+    for (const provider of data.additionalProviders ?? []) renderProvider(root, provider);
     for (const warning of data.warnings) root.createEl("p", { text: warning, cls: "codex-usage-warning" });
     const details = root.createEl("details");
     details.createEl("summary", { text: "Advanced raw output" });
@@ -257,6 +274,17 @@ class CodexUsageSettings extends PluginSettingTab {
     }).catch(error => plugin.showError(error));
 
     new Setting(this.containerEl).setName("Usage refresh").setHeading();
+    new Setting(this.containerEl)
+      .setName("Quota display")
+      .setDesc("Show the amount remaining like the codex dashboard, or the amount already used.")
+      .addDropdown(dropdown => dropdown
+        .addOptions({ remaining: "Remaining", used: "Used" })
+        .setValue(plugin.settings.usageDisplay)
+        .onChange(async value => {
+          plugin.settings.usageDisplay = value as Settings["usageDisplay"];
+          await plugin.saveSettings();
+          this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
+        }));
     new Setting(this.containerEl).setName("Last refresh").setDesc(plugin.data ? new Date(plugin.data.timestamp).toLocaleString() : "Never");
     new Setting(this.containerEl)
       .setName("Refresh now")
@@ -343,24 +371,115 @@ class TextModal extends Modal {
 }
 
 function summary(value: Record<string, unknown>): string {
-  return Object.entries(value).map(([key, item]) => `${key}: ${String(item)}`).join(" · ");
+  return Object.entries(value)
+    .filter((entry): entry is [string, string | number | boolean] =>
+      ["string", "number", "boolean"].includes(typeof entry[1]))
+    .map(([key, item]) => `${label(key)}: ${item}`)
+    .join(" · ");
 }
 
-function quota(root: HTMLElement, label: string, value: Record<string, unknown>): void {
+function quota(
+  root: HTMLElement,
+  title: string,
+  value: Record<string, unknown>,
+  display: Settings["usageDisplay"]
+): void {
   const percent = [value.percent, value.usedPercent, value.usagePercent]
     .find(item => typeof item === "number");
+  const shown = typeof percent === "number" && display === "remaining" ? 100 - percent : percent;
   const reset = value.resetsAt ?? value.resetAt;
   const card = root.createDiv({ cls: "codex-usage-quota" });
   const heading = card.createDiv({ cls: "codex-usage-quota-heading" });
-  heading.createEl("strong", { text: label });
-  heading.createSpan({ text: typeof percent === "number" ? `${percent}% used` : "Not available" });
+  heading.createEl("strong", { text: title });
+  heading.createSpan({ text: typeof shown === "number" ? `${shown}% ${display}` : "Not available" });
   const progress = card.createEl("progress");
   progress.max = 100;
-  progress.value = typeof percent === "number" ? Math.min(100, Math.max(0, percent)) : 0;
-  progress.setAttr("aria-label", `${label} usage`);
+  progress.value = typeof shown === "number" ? Math.min(100, Math.max(0, shown)) : 0;
+  progress.setAttr("aria-label", `${title}: ${shown ?? 0}% ${display}`);
   if (typeof reset === "string" || typeof reset === "number") {
-    card.createDiv({ text: `Resets ${reset}`, cls: "codex-usage-muted" });
+    card.createDiv({ text: `Resets ${formatReset(reset)}`, cls: "codex-usage-muted" });
   }
+}
+
+function renderProvider(root: HTMLElement, provider: Record<string, unknown>): void {
+  const name = provider.provider === "openrouter"
+    ? "OpenRouter"
+    : typeof provider.provider === "string" ? provider.provider : "Provider";
+  const error = record(provider.error).message;
+  const section = root.createDiv({ cls: "codex-usage-provider" });
+  section.createEl("h3", { text: name });
+  if (typeof error === "string") {
+    section.createEl("p", { text: `${error} Configure its API key in CodexBar to enable this provider.`, cls: "codex-usage-warning" });
+    return;
+  }
+  const details = summary({
+    ...record(provider.credits),
+    ...record(provider.usage),
+    ...record(provider.status)
+  });
+  section.createEl("p", { text: details || "Connected; no summary metrics were returned." });
+}
+
+function dashboardMarkdown(data: UsageData, display: Settings["usageDisplay"]): string {
+  const percent = (value: Record<string, unknown>) => {
+    const used = [value.percent, value.usedPercent, value.usagePercent].find(item => typeof item === "number");
+    return typeof used === "number" ? `${display === "remaining" ? 100 - used : used}% ${display}` : "Not available";
+  };
+  const openRouter = data.additionalProviders.find(provider => provider.provider === "openrouter");
+  const openRouterError = openRouter && record(openRouter.error).message;
+  return `# Codex usage
+
+> [!info] Synced snapshot
+> Updated by ${data.platform} at ${new Date(data.timestamp).toLocaleString()}. On a supported desktop, install the helper for local live refreshes.
+
+| Balance | Current value | Reset |
+| --- | ---: | --- |
+| 5 hour usage limit | **${percent(data.usage.session)}** | ${formatReset(data.usage.session.resetsAt ?? data.usage.session.resetAt)} |
+| Weekly usage limit | **${percent(data.usage.weekly)}** | ${formatReset(data.usage.weekly.resetsAt ?? data.usage.weekly.resetAt)} |
+| Credits remaining | **${scalar(data.credits.remaining) || "Not available"}** | |
+
+## Cost
+
+- Last 30 days: ${money(data.cost.last30DaysCostUSD, data.cost.currencyCode) || "Not available"}
+- Session: ${money(data.cost.sessionCostUSD, data.cost.currencyCode) || "Not available"}
+- Last 30 days tokens: ${count(data.cost.last30DaysTokens) || "Not available"}
+
+## OpenRouter
+
+${typeof openRouterError === "string" ? `Setup required: ${openRouterError}` : openRouter ? summary(openRouter) || "Connected." : "No data returned."}
+
+_This file is generated by Codex Usage. Raw helper output and credentials are never synced._
+`;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function scalar(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
+function count(value: unknown): string {
+  return typeof value === "number" ? new Intl.NumberFormat().format(value) : "";
+}
+
+function money(value: unknown, currency: unknown): string {
+  if (typeof value !== "number") return "";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: typeof currency === "string" ? currency : "USD"
+  }).format(value);
+}
+
+function label(value: string): string {
+  return value.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, first => first.toUpperCase());
+}
+
+function formatReset(value: unknown): string {
+  if (typeof value !== "string" && typeof value !== "number") return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 }
 
 function parseSettings(value: unknown): Settings {
@@ -371,6 +490,7 @@ function parseSettings(value: unknown): Settings {
     refreshIntervalMinutes: typeof saved.refreshIntervalMinutes === "number" ? saved.refreshIntervalMinutes : DEFAULT_SETTINGS.refreshIntervalMinutes,
     logLevel: ["error", "warn", "info", "debug"].includes(String(saved.logLevel))
       ? saved.logLevel as Settings["logLevel"]
-      : DEFAULT_SETTINGS.logLevel
+      : DEFAULT_SETTINGS.logLevel,
+    usageDisplay: saved.usageDisplay === "used" ? "used" : DEFAULT_SETTINGS.usageDisplay
   };
 }
