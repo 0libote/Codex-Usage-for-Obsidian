@@ -14,9 +14,9 @@ export interface Adapter {
 
 function parseJson(raw: string): { payload: Record<string, unknown>; raw: unknown } {
   try {
-    const parsed: unknown = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as unknown;
     const payload = Array.isArray(parsed)
-      ? parsed.find(item => record(item).provider === "codex") ?? parsed[0]
+      ? (parsed as unknown[]).find(item => record(item).provider === "codex") ?? (parsed as unknown[])[0]
       : parsed;
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error("Expected a JSON object or non-empty array");
     return { payload: payload as Record<string, unknown>, raw: parsed };

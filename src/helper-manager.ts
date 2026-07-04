@@ -50,7 +50,9 @@ export class HelperManager {
       return { state: "Missing", target: this.target, path: this.binaryPath, installedVersion, knownGoodVersion: this.descriptor.ourPackageVersion };
     }
     try {
-      installedVersion = JSON.parse(await readFile(this.metadataPath, "utf8")).ourPackageVersion ?? "";
+      const metadata = JSON.parse(await readFile(this.metadataPath, "utf8")) as unknown;
+      const version = record(metadata).ourPackageVersion;
+      installedVersion = typeof version === "string" ? version : "";
     } catch {
       return { state: "Broken", target: this.target, path: this.binaryPath, installedVersion, knownGoodVersion: this.descriptor.ourPackageVersion };
     }
@@ -129,7 +131,7 @@ export class HelperManager {
         try {
           const result = adapter.parseCost((await this.run(adapter.costArgs)).stdout);
           data = { ...data, cost: result.cost, raw: { usage: data.raw, cost: result.raw } };
-        } catch (error) {
+        } catch {
           const warning = "Cost refresh failed. Run diagnostics for details.";
           data.warnings.push(warning);
           await this.logger?.write("warn", warning);
@@ -183,7 +185,8 @@ export class HelperManager {
         maxBuffer: 5_000_000
       }, (error, stdout, stderr) => {
         this.children.delete(child);
-        error ? reject(error) : resolve({ stdout, stderr });
+        if (error) reject(asError(error));
+        else resolve({ stdout, stderr });
       });
       this.children.add(child);
     });
@@ -193,8 +196,9 @@ export class HelperManager {
     if (this.cacheLoaded) return;
     this.cacheLoaded = true;
     try {
-      const stored = JSON.parse(await readFile(this.cachePath, "utf8")) as { savedAt: number; value: UsageData };
-      this.cache.restore(stored.value, stored.savedAt);
+      const stored = record(JSON.parse(await readFile(this.cachePath, "utf8")) as unknown);
+      if (typeof stored.savedAt !== "number" || !stored.value || typeof stored.value !== "object") return;
+      this.cache.restore(stored.value as UsageData, stored.savedAt);
       await this.logger?.write("debug", "Loaded persisted usage cache.");
     } catch {
       // No prior successful data.
@@ -221,7 +225,9 @@ async function download(url: string, destination: string, redirects = 0): Promis
     const request = get(url, response => {
       if (response.statusCode && [301, 302, 307, 308].includes(response.statusCode) && response.headers.location) {
         response.resume();
-        download(new URL(response.headers.location, url).toString(), destination, redirects + 1).then(resolve, reject);
+        void download(new URL(response.headers.location, url).toString(), destination, redirects + 1)
+          .then(resolve)
+          .catch(error => reject(asError(error)));
         return;
       }
       if (response.statusCode !== 200) {
@@ -230,11 +236,18 @@ async function download(url: string, destination: string, redirects = 0): Promis
         return;
       }
       const chunks: Buffer[] = [];
-      response.on("data", chunk => chunks.push(Buffer.from(chunk)));
-      response.on("end", () => writeFile(destination, Buffer.concat(chunks)).then(() => resolve(), reject));
-      response.on("error", reject);
+      response.on("data", (chunk: unknown) => {
+        if (typeof chunk === "string" || chunk instanceof Uint8Array) chunks.push(Buffer.from(chunk));
+        else reject(new Error("Download returned an unsupported data chunk."));
+      });
+      response.on("end", () => {
+        void writeFile(destination, Buffer.concat(chunks))
+          .then(() => resolve())
+          .catch(error => reject(asError(error)));
+      });
+      response.on("error", error => reject(asError(error)));
     });
-    request.on("error", reject);
+    request.on("error", error => reject(asError(error)));
     request.setTimeout(30_000, () => request.destroy(new Error("Download timed out")));
   });
 }
@@ -249,4 +262,12 @@ async function extract(archive: string, destination: string): Promise<void> {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

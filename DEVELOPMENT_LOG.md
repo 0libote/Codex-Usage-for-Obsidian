@@ -89,3 +89,10 @@
 - Changed: Removed the redundant product name from the plugin manifest description.
 - Why: Community directory descriptions must not include the word “Obsidian.”
 - Checks: pending project checks and release 0.1.3.
+
+## 2026-07-04 — Community source review
+
+- Changed: Replaced the post-1.5 workspace API, made settings rendering synchronous, used standard settings headings, validated untyped JSON/settings data, and made Node callbacks reject only `Error` values.
+- Added: Official `eslint-plugin-obsidianmd` checks to the release gate.
+- Checks: official Obsidian lint (zero errors), typecheck, 14 tests, production build, and diff check passed.
+- Compatibility: retained imperative settings for Obsidian 1.5.0; declarative searchable settings require 1.13.0 and remain a non-blocking recommendation.

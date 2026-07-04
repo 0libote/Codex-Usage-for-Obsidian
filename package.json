@@ -5,14 +5,17 @@
   "private": true,
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
-    "check": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint",
     "dev": "node esbuild.config.mjs",
+    "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "esbuild": "^0.24.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.4.1",
     "obsidian": "^1.7.7",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

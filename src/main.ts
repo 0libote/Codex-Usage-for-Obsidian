@@ -16,7 +16,7 @@ export default class CodexUsagePlugin extends Plugin {
   private refreshTimer?: number;
 
   async onload(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = parseSettings(await this.loadData() as unknown);
     const adapter = this.app.vault.adapter as typeof this.app.vault.adapter & { getBasePath(): string };
     const dataDir = join(adapter.getBasePath(), this.app.vault.configDir, "plugins", this.manifest.id);
     this.logger = new Logger(join(dataDir, "logs", "plugin.log"), this.settings.logLevel);
@@ -63,7 +63,7 @@ export default class CodexUsagePlugin extends Plugin {
       leaf = this.app.workspace.getRightLeaf(false) ?? undefined;
       await leaf?.setViewState({ type: VIEW_TYPE, active: true });
     }
-    if (leaf) this.app.workspace.revealLeaf(leaf);
+    if (leaf) this.app.workspace.setActiveLeaf(leaf, { focus: true });
   }
 
   async refresh(bypassCache = false): Promise<void> {
@@ -122,7 +122,8 @@ export default class CodexUsagePlugin extends Plugin {
     const session = this.data?.usage.session;
     const percent = session?.percent ?? session?.usedPercent ?? session?.usagePercent;
     const reset = session?.resetsAt ?? session?.resetAt;
-    this.statusBar?.setText(`Codex ${typeof percent === "number" ? `${percent}%` : "ready"}${reset ? ` · resets ${String(reset)}` : ""}`);
+    const resetText = typeof reset === "string" || typeof reset === "number" ? ` · resets ${reset}` : "";
+    this.statusBar?.setText(`Codex ${typeof percent === "number" ? `${percent}%` : "ready"}${resetText}`);
   }
 
   scheduleRefresh(): void {
@@ -138,7 +139,7 @@ export default class CodexUsagePlugin extends Plugin {
     if ((await this.manager.status()).state !== "Missing") await this.refresh(true);
   }
 
-  private showError(error: unknown): void {
+  showError(error: unknown): void {
     const message = error instanceof CodexUsageError ? `${error.message}${error.details ? ` ${error.details}` : ""}` : String(error);
     console.error("Codex Usage for Obsidian:", error);
     void this.logger.write("error", error instanceof CodexUsageError ? error.code : "Unexpected plugin error.");
@@ -152,7 +153,7 @@ class DashboardView extends ItemView {
   }
 
   getViewType(): string { return VIEW_TYPE; }
-  getDisplayText(): string { return "Codex Usage"; }
+  getDisplayText(): string { return "Codex usage"; }
   getIcon(): string { return "gauge"; }
 
   async onOpen(): Promise<void> {
@@ -162,7 +163,7 @@ class DashboardView extends ItemView {
   render(): void {
     const root = this.containerEl.children[1] as HTMLElement;
     root.empty();
-    root.createEl("h2", { text: "Codex Usage for Obsidian" });
+    root.createEl("h2", { text: "Codex usage" });
     if (!this.plugin.data) {
       root.createEl("p", {
         text: "Install the managed helper in settings to display usage.",
@@ -185,7 +186,7 @@ class DashboardView extends ItemView {
     ]) {
       const card = grid.createDiv({ cls: "codex-usage-card" });
       card.createEl("strong", { text: label });
-      card.createEl("div", { text: value || "Not available", cls: value ? "" : "codex-usage-muted" });
+      card.createDiv({ text: value || "Not available", cls: value ? "" : "codex-usage-muted" });
     }
     for (const warning of data.warnings) root.createEl("p", { text: warning, cls: "codex-usage-warning" });
     const details = root.createEl("details");
@@ -199,19 +200,29 @@ class CodexUsageSettings extends PluginSettingTab {
     super(owner.app, owner);
   }
 
-  async display(): Promise<void> {
+  display(): void {
+    this.render();
+  }
+
+  private render(): void {
     const plugin = this.owner;
     this.containerEl.empty();
-    this.containerEl.createEl("h2", { text: "Codex Usage for Obsidian" });
-    const status = await plugin.manager.status();
-    new Setting(this.containerEl).setName("Helper status").setDesc(status.state);
-    new Setting(this.containerEl).setName("Platform").setDesc(status.target);
-    new Setting(this.containerEl).setName("Installed helper version").setDesc(status.installedVersion || "Not installed");
-    new Setting(this.containerEl).setName("Known-good helper version").setDesc(status.knownGoodVersion);
-    new Setting(this.containerEl).setName("Helper install path").setDesc(status.path);
+    new Setting(this.containerEl).setName("Managed helper").setHeading();
+    const helperStatus = new Setting(this.containerEl).setName("Helper status").setDesc("Loading…");
+    const platform = new Setting(this.containerEl).setName("Platform").setDesc("Loading…");
+    const installedVersion = new Setting(this.containerEl).setName("Installed helper version").setDesc("Loading…");
+    const knownVersion = new Setting(this.containerEl).setName("Known-good helper version").setDesc("Loading…");
+    const installPath = new Setting(this.containerEl).setName("Helper install path").setDesc("Loading…");
+    void plugin.manager.status().then(status => {
+      helperStatus.setDesc(status.state);
+      platform.setDesc(status.target);
+      installedVersion.setDesc(status.installedVersion || "Not installed");
+      knownVersion.setDesc(status.knownGoodVersion);
+      installPath.setDesc(status.path);
+    }).catch(error => plugin.showError(error));
     new Setting(this.containerEl).setName("Log path").setDesc(plugin.logger.path);
     new Setting(this.containerEl).setName("Last refresh").setDesc(plugin.data ? new Date(plugin.data.timestamp).toLocaleString() : "Never");
-    new Setting(this.containerEl).setName("Cache TTL").setDesc("Seconds to keep successful usage data.")
+    new Setting(this.containerEl).setName("Cache duration").setDesc("Seconds to keep successful usage data.")
       .addText(text => text.setValue(String(plugin.settings.cacheTtlSeconds)).onChange(async value => {
         plugin.settings.cacheTtlSeconds = Math.max(0, Number(value) || 0);
         await plugin.saveSettings();
@@ -237,8 +248,8 @@ class CodexUsageSettings extends PluginSettingTab {
       ["Run Diagnostics", () => plugin.diagnostics()],
       ["Show Raw Output", () => plugin.showRaw()],
       ["Open Logs", () => plugin.showLogs()],
-      ["Clear Logs", async () => { await plugin.logger.clear(); new Notice("Codex Usage logs cleared."); }],
-      ["Reset Helper", async () => { await plugin.manager.remove(); await plugin.clearCache(); this.display(); }],
+      ["Clear Logs", async () => { await plugin.logger.clear(); new Notice("Codex usage logs cleared."); }],
+      ["Reset Helper", async () => { await plugin.manager.remove(); await plugin.clearCache(); this.render(); }],
       ["Clear Cache", () => plugin.clearCache()]
     ] as Array<[string, () => void | Promise<void>]>) {
       const button = actions.createEl("button", { text: label });
@@ -274,4 +285,16 @@ class TextModal extends Modal {
 
 function summary(value: Record<string, unknown>): string {
   return Object.entries(value).map(([key, item]) => `${key}: ${String(item)}`).join(" · ");
+}
+
+function parseSettings(value: unknown): Settings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...DEFAULT_SETTINGS };
+  const saved = value as Record<string, unknown>;
+  return {
+    cacheTtlSeconds: typeof saved.cacheTtlSeconds === "number" ? saved.cacheTtlSeconds : DEFAULT_SETTINGS.cacheTtlSeconds,
+    refreshIntervalMinutes: typeof saved.refreshIntervalMinutes === "number" ? saved.refreshIntervalMinutes : DEFAULT_SETTINGS.refreshIntervalMinutes,
+    logLevel: ["error", "warn", "info", "debug"].includes(String(saved.logLevel))
+      ? saved.logLevel as Settings["logLevel"]
+      : DEFAULT_SETTINGS.logLevel
+  };
 }
