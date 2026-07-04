@@ -39,9 +39,13 @@ export class HelperManager {
     let installedVersion = "";
     try {
       await stat(this.binaryPath);
-      installedVersion = JSON.parse(await readFile(this.metadataPath, "utf8")).ourPackageVersion ?? "";
     } catch {
       return { state: "Missing", target: this.target, path: this.binaryPath, installedVersion, knownGoodVersion: this.descriptor.ourPackageVersion };
+    }
+    try {
+      installedVersion = JSON.parse(await readFile(this.metadataPath, "utf8")).ourPackageVersion ?? "";
+    } catch {
+      return { state: "Broken", target: this.target, path: this.binaryPath, installedVersion, knownGoodVersion: this.descriptor.ourPackageVersion };
     }
     return {
       state: installedVersion === this.descriptor.ourPackageVersion ? "Installed" : "Update available",
@@ -57,7 +61,7 @@ export class HelperManager {
       throw new CodexUsageError("MANIFEST_UNAVAILABLE", "This helper release has not been configured with a valid checksum.");
     }
     await mkdir(this.installDir, { recursive: true });
-    const archive = join(this.installDir, `${this.descriptor.assetName}.download`);
+    const archive = join(this.installDir, `download-${this.descriptor.assetName}`);
     const staging = join(this.installDir, "staging");
     try {
       await download(this.descriptor.downloadUrl, archive);

@@ -26,3 +26,12 @@
 - Checks: helper script syntax, workflow YAML parse, `npm run typecheck`, `npm test` (8 passing), `npm run build`.
 - Known issues: A maintainer must publish real controlled helper assets, replace manifest placeholders, add exact upstream licence files, and manually smoke-test candidates.
 - Next: Publish first reviewed helper candidates, then test in an Obsidian desktop vault.
+
+## 2026-07-04 — Platform hardening
+
+- Changed: Preserved archive extensions for Windows extraction, distinguished broken helper metadata from a missing binary, declared adapter cost commands, and tested helper state transitions.
+- Why: PowerShell requires `.zip` input and settings must report repairable installations accurately.
+- Files: helper manager, adapters, tests.
+- Checks: `npm run typecheck`, `npm test` (9 passing), `npm run build`, helper script syntax, `git diff --check`.
+- Known issues: Real helper command syntax must be validated against the first reviewed upstream packages.
+- Next: Publish and smoke-test controlled helper candidates.

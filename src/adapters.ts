@@ -6,6 +6,7 @@ export interface Adapter {
   capabilities: Capability[];
   versionArgs: string[];
   usageArgs: string[];
+  costArgs?: string[];
   diagnosticsArgs: string[];
   parse(raw: string, context: Omit<UsageData, "usage" | "credits" | "cost" | "pace" | "status" | "account" | "capabilities" | "warnings" | "raw">): UsageData;
 }
@@ -60,6 +61,7 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     capabilities: [...baseCapabilities, "cost", "credits"],
     versionArgs: ["--version"],
     usageArgs: ["usage", "--json"],
+    costArgs: ["cost", "--json"],
     diagnosticsArgs: ["diagnostics", "--json"],
     parse(raw, context) { return normalise(this, raw, context); }
   },
@@ -68,6 +70,7 @@ export const adapters: Record<UsageData["adapter"], Adapter> = {
     capabilities: [...baseCapabilities, "cost", "credits"],
     versionArgs: ["--version"],
     usageArgs: ["usage", "--json"],
+    costArgs: ["cost", "--json"],
     diagnosticsArgs: ["diagnostics", "--json"],
     parse(raw, context) { return normalise(this, raw, context); }
   },

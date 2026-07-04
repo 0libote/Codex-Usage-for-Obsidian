@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { UsageCache } from "../src/cache";
 import { CodexUsageError } from "../src/errors";
 import { parseManifest } from "../src/helper-manifest";
 import { detectTarget } from "../src/platform";
-import { verifySha256 } from "../src/helper-manager";
+import { HelperManager, verifySha256 } from "../src/helper-manager";
 
 describe("helper core", () => {
   it("detects supported targets", () => {
@@ -28,6 +28,17 @@ describe("helper core", () => {
     await writeFile(path, "known");
     await expect(verifySha256(path, createHash("sha256").update("known").digest("hex"))).resolves.toBeUndefined();
     await expect(verifySha256(path, "0".repeat(64))).rejects.toMatchObject({ code: "CHECKSUM_FAILED" });
+  });
+
+  it("reports missing, broken, and update-available helper states", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "codex-usage-state-"));
+    const manager = new HelperManager(dir);
+    expect((await manager.status()).state).toBe("Missing");
+    await mkdir(manager.installDir, { recursive: true });
+    await writeFile(manager.binaryPath, "");
+    expect((await manager.status()).state).toBe("Broken");
+    await writeFile(join(manager.installDir, "installed.json"), JSON.stringify({ ourPackageVersion: "older" }));
+    expect((await manager.status()).state).toBe("Update available");
   });
 
   it("preserves raw output while normalising usage", () => {
