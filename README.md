@@ -64,3 +64,5 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 See [SECURITY.md](SECURITY.md). Downloaded executables live only in the plugin data folder, not in normal vault notes. Logs stay in Obsidian’s local developer console unless the user explicitly copies/exports them.
 
 CodexBar and Win-CodexBar are separate upstream projects with their own licences. Any redistributed helper release must include its exact upstream licence and notice files under `helpers/licences/`; this repository does not claim ownership of those components.
+
+The Codex Usage plugin source is available under the [MIT License](LICENSE).

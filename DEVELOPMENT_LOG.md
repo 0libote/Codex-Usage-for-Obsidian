@@ -75,3 +75,11 @@
 - Files: release workflow and README.
 - Checks: workflow YAML parse, typecheck, 14 tests, production build, and diff check passed.
 - Next: clean the redundant assets from release 0.1.2.
+
+## 2026-07-04 — Community review metadata
+
+- Changed: Added the MIT project licence and user-facing 0.1.2 release notes.
+- Verified: repository and release manifests match; the release contains only `main.js`, `manifest.json`, and `styles.css`.
+- Files: licence, package metadata, README, release description.
+- Checks: typecheck, 14 tests, production build, and diff check passed.
+- Next: rerun community review after GitHub recognizes the licence.

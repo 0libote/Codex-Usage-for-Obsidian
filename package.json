@@ -1,6 +1,7 @@
 {
   "name": "codex-usage-for-obsidian",
   "version": "0.1.2",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "build": "tsc --noEmit && node esbuild.config.mjs production",
