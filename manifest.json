@@ -1,7 +1,7 @@
 {
   "id": "codex-usage",
   "name": "Codex Usage",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "Display CodexBar-style AI coding usage data using managed local helpers.",
   "author": "0libote",
