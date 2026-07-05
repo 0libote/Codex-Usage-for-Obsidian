@@ -16,7 +16,6 @@ export default class CodexUsagePlugin extends Plugin {
   history: HistorySample[] = [];
   manager!: HelperManager;
   logger!: Logger;
-  private statusBar?: HTMLElement;
   private refreshTimer?: number;
 
   async onload(): Promise<void> {
@@ -26,9 +25,6 @@ export default class CodexUsagePlugin extends Plugin {
     this.manager = new HelperManager(dataDir, undefined, this.logger);
     this.registerView(VIEW_TYPE, leaf => new DashboardView(leaf, this));
     this.addSettingTab(new CodexUsageSettings(this));
-    this.statusBar = this.addStatusBarItem();
-    this.statusBar.setText("Codex —");
-    this.statusBar.addEventListener("click", () => void this.openDashboard());
     this.addRibbonIcon("gauge", "Open codex usage", () => void this.openDashboard());
 
     const commands: Array<[string, string, () => void | Promise<void>]> = [
@@ -44,7 +40,6 @@ export default class CodexUsagePlugin extends Plugin {
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
     this.data = await this.manager.cached() ?? null;
     this.history = await this.manager.history();
-    if (this.data) this.updateStatusBar();
     const startupTimer = window.setTimeout(() => void this.startupRefresh(), 3_000);
     this.register(() => window.clearTimeout(startupTimer));
     this.scheduleRefresh();
@@ -79,7 +74,6 @@ export default class CodexUsagePlugin extends Plugin {
     try {
       this.data = await this.manager.usage(this.settings.cacheTtlSeconds, bypassCache);
       this.history = await this.manager.history();
-      this.updateStatusBar();
       await this.writeSyncedDashboard();
       this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
     } catch (error) {
@@ -125,16 +119,7 @@ export default class CodexUsagePlugin extends Plugin {
   async clearCache(): Promise<void> {
     await this.manager.clearCache();
     this.data = null;
-    this.statusBar?.setText("Codex —");
     this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
-  }
-
-  private updateStatusBar(): void {
-    const session = this.data?.usage.session;
-    const percent = session?.percent ?? session?.usedPercent ?? session?.usagePercent;
-    const reset = session?.resetsAt ?? session?.resetAt;
-    const resetText = typeof reset === "string" || typeof reset === "number" ? ` · resets ${reset}` : "";
-    this.statusBar?.setText(`Codex ${typeof percent === "number" ? `${percent}%` : "ready"}${resetText}`);
   }
 
   private async writeSyncedDashboard(): Promise<void> {
