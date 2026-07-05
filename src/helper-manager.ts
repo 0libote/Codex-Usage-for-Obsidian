@@ -33,9 +33,7 @@ export interface ProviderStatus {
 export interface ProviderConfigInput {
   apiKey?: string;
   cookieHeader?: string;
-  workspaceID?: string;
   enterpriseHost?: string;
-  region?: string;
 }
 
 export class HelperManager {

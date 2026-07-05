@@ -425,39 +425,44 @@ class CodexUsageSettings extends PluginSettingTab {
       await this.owner.logger.write("debug", `Provider settings unavailable: ${String(error)}`);
       return;
     }
-    const configurable = providers.filter(item => providerFields(item.provider).length);
-    const selected = configurable.find(item => item.provider === this.selectedProvider) ?? configurable[0];
+    const selected = providers.find(item => item.provider === this.selectedProvider) ?? providers[0];
     if (!selected) {
-      container.createEl("p", { text: "No providers need additional setup.", cls: "codex-usage-muted" });
+      container.createEl("p", { text: "No providers are available.", cls: "codex-usage-muted" });
       return;
     }
     this.selectedProvider = selected.provider;
 
     new Setting(container)
       .setName("Provider")
-      .setDesc("Only providers that need additional details are listed.")
+      .setDesc("Choose a provider. Extra fields appear only when required.")
       .addDropdown(dropdown => {
-        for (const provider of configurable) dropdown.addOption(provider.provider, provider.displayName);
+        for (const provider of providers) dropdown.addOption(provider.provider, provider.displayName);
         dropdown.setValue(selected.provider).onChange(value => {
           this.selectedProvider = value;
           void this.renderProviders(container);
         });
       });
-    new Setting(container).setName("Setup guide").setDesc(providerGuide(selected.provider));
     new Setting(container)
-      .setName(`Enable ${selected.displayName}`)
-      .setDesc("Stored in the CLI configuration on this device.")
-      .addToggle(toggle => toggle.setValue(selected.enabled).onChange(async enabled => {
-        try {
-          await this.owner.manager.setProviderEnabled(selected.provider, enabled);
-          new Notice(`${selected.displayName} ${enabled ? "enabled" : "disabled"}.`);
-        } catch (error) {
-          this.owner.showError(error);
-        }
-      }));
+      .setName(selected.displayName)
+      .setDesc(`${providerGuide(selected.provider)}${selected.enabled ? " Currently enabled." : ""}`);
+
+    const fields = providerFields(selected.provider);
+    if (!fields.length || selected.enabled) {
+      new Setting(container)
+        .setName(selected.enabled ? "Enabled" : "Enable provider")
+        .setDesc("Stored in the helper configuration on this device.")
+        .addToggle(toggle => toggle.setValue(selected.enabled).onChange(async enabled => {
+          try {
+            await this.owner.manager.setProviderEnabled(selected.provider, enabled);
+            await this.renderProviders(container);
+          } catch (error) {
+            this.owner.showError(error);
+          }
+        }));
+    }
 
     const input: ProviderConfigInput = {};
-    for (const field of providerFields(selected.provider)) {
+    for (const field of fields) {
       const setting = new Setting(container).setName(field.name).setDesc(field.description);
       const bind = (component: { inputEl: HTMLInputElement | HTMLTextAreaElement; setPlaceholder(value: string): unknown; onChange(callback: (value: string) => void): unknown }) => {
         if (field.secret) component.inputEl.setAttribute("type", "password");
@@ -468,10 +473,10 @@ class CodexUsageSettings extends PluginSettingTab {
       if (field.multiline) setting.addTextArea(bind);
       else setting.addText(bind);
     }
-    new Setting(container)
-        .setName("Save provider setup")
-        .setDesc("Secrets remain in the CLI configuration on this device and are not synced.")
-        .addButton(button => button.setButtonText("Save").setCta().onClick(async () => {
+    if (fields.length) new Setting(container)
+        .setName("Save and enable")
+        .setDesc("Nothing entered here is stored in the vault or synced.")
+        .addButton(button => button.setButtonText("Save and enable").setCta().onClick(async () => {
           try {
             await this.owner.manager.configureProvider(selected.provider, input);
             new Notice(`${selected.displayName} setup saved.`);

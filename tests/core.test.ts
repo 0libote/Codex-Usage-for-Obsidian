@@ -155,8 +155,7 @@ describe("helper core", () => {
     process.env.CODEXBAR_CONFIG = path;
     try {
       await new HelperManager(dir, "macos-arm64").configureProvider("opencode", {
-        cookieHeader: "session=example",
-        workspaceID: "wrk_example"
+        cookieHeader: "session=example"
       });
       const config = JSON.parse(await readFile(path, "utf8")) as {
         providers: Array<Record<string, unknown>>;
@@ -165,8 +164,7 @@ describe("helper core", () => {
         id: "opencode",
         enabled: true,
         cookieSource: "manual",
-        cookieHeader: "session=example",
-        workspaceID: "wrk_example"
+        cookieHeader: "session=example"
       });
     } finally {
       if (previous === undefined) delete process.env.CODEXBAR_CONFIG;

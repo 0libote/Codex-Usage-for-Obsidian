@@ -24,9 +24,9 @@ Users explicitly choose Install Helper or Update Helper. The plugin then:
 4. extracts it into the platform-native Codex Usage application-data directory;
 5. runs it locally through its dedicated adapter.
 
-Helpers are never silently updated. The dashboard currently queries Codex only. Provider-specific fields are retained in `raw`. Provider setup entered in Obsidian is written directly to the CLI's device-local configuration and is never synced.
+Helpers are never silently updated. The dashboard currently queries Codex only. Although the managed helper knows about other providers, enabling one does not add it to the dashboard yet.
 
-See [Provider setup](docs/PROVIDER-SETUP.md) for managed CLI paths, provider authentication, diagnostics, and cross-device behavior.
+See [Provider support](docs/PROVIDER-SETUP.md) for the exact support boundary, OpenCode requirements, managed CLI paths, and diagnostics.
 
 ## Development
 
@@ -58,7 +58,7 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 - **Manifest unavailable:** Confirm GitHub is reachable and the plugin version includes a published helper manifest.
 - **Checksum failed:** The helper is not executed. Report the release URL and checksum.
 - **Command or parse failure:** Run Diagnostics, inspect Raw Output, and check Obsidian’s developer console.
-- **Provider setup:** Follow the [managed CLI provider guide](docs/PROVIDER-SETUP.md).
+- **Other providers:** Read the [provider support guide](docs/PROVIDER-SETUP.md). The dashboard currently displays Codex only.
 - **Logs:** Use Open Logs in plugin settings. Logs are stored beside the helper in the platform-native application-data directory and never written into notes.
 - **Application data:** macOS uses `~/Library/Application Support/Codex Usage/`; Windows uses `%LOCALAPPDATA%\Codex Usage\`. The limited cross-device dashboard is stored at `Codex Usage/Dashboard.md` inside the vault.
 - **Stale usage:** A refresh failed and the last successful cache entry is being shown with a warning.

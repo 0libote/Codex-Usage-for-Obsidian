@@ -9,67 +9,51 @@ export type ProviderField = {
   multiline?: boolean;
 };
 
-const fields: Array<ProviderField & { providers: string[] }> = [
-  {
-    key: "apiKey",
-    name: "API key",
-    description: "Leave blank to keep the current device-local key.",
-    placeholder: "Paste API key",
-    secret: true,
-    providers: [
-      "openai", "azureopenai", "claude", "alibaba", "copilot", "zai", "minimax", "kimi", "kilo",
-      "kimik2", "moonshot", "ollama", "synthetic", "warp", "openrouter", "elevenlabs", "doubao",
-      "deepseek", "codebuff", "crof", "venice", "groq", "llmproxy", "litellm", "deepgram", "poe",
-      "chutes", "crossmodel", "clawrouter"
-    ]
-  },
-  {
-    key: "cookieHeader",
-    name: "Manual cookie header",
-    description: "Optional. Leave blank to use automatic browser import.",
-    placeholder: "Cookie: name=value; …",
-    multiline: true,
-    providers: [
-      "claude", "cursor", "opencode", "opencodego", "alibaba", "alibabatokenplan", "factory", "devin",
-      "minimax", "manus", "kimi", "augment", "amp", "t3chat", "ollama", "perplexity", "mimo", "sakana",
-      "abacus", "mistral", "commandcode", "qoder"
-    ]
-  },
-  {
-    key: "workspaceID",
-    name: "Workspace ID",
-    description: "Optional OpenCode workspace ID or workspace URL.",
-    placeholder: "Workspace ID",
-    providers: ["opencode", "opencodego"]
-  },
-  {
-    key: "enterpriseHost",
-    name: "Base URL",
-    description: "HTTPS endpoint for this provider.",
-    placeholder: "Provider URL",
-    providers: ["llmproxy", "litellm", "clawrouter"]
-  },
-  {
-    key: "region",
-    name: "Region",
-    description: "Optional provider region.",
-    placeholder: "Region",
-    providers: ["minimax", "moonshot", "alibaba"]
-  }
-];
+const API_KEY: ProviderField = {
+  key: "apiKey",
+  name: "API key",
+  description: "Required. Stored only in the CLI configuration on this device.",
+  placeholder: "Paste API key",
+  secret: true
+};
+
+const COOKIE: ProviderField = {
+  key: "cookieHeader",
+  name: "Cookie header",
+  description: "Required. Copy the Cookie request header from the provider site.",
+  placeholder: "name=value; …",
+  multiline: true
+};
+
+const HOST: ProviderField = {
+  key: "enterpriseHost",
+  name: "Base URL",
+  description: "Required HTTPS endpoint for this provider.",
+  placeholder: "https://provider.example"
+};
+
+// Add API-key providers here. Only exceptions need code below.
+const API_KEY_PROVIDERS = new Set([
+  "openai", "zai", "kimik2", "moonshot", "synthetic", "warp", "openrouter", "elevenlabs",
+  "doubao", "deepseek", "crof", "venice", "groq", "llmproxy", "litellm", "deepgram", "poe",
+  "chutes", "crossmodel", "clawrouter"
+]);
 
 export function providerFields(provider: string): ProviderField[] {
-  return fields.filter(field => field.providers.includes(provider)).map(({ providers: _, ...field }) => field);
+  if (provider === "sakana") return [COOKIE];
+  if (provider === "llmproxy" || provider === "litellm") return [API_KEY, HOST];
+  return API_KEY_PROVIDERS.has(provider) ? [API_KEY] : [];
 }
 
 export function providerGuide(provider: string): string {
-  const configured = providerFields(provider);
-  const apiKey = configured.some(field => field.key === "apiKey");
-  const cookie = configured.some(field => field.key === "cookieHeader");
+  if (provider === "codex") return "Sign in with the Codex CLI. The helper reads that login automatically.";
   if (provider === "opencode" || provider === "opencodego") {
-    return "Sign in at opencode.ai in Chrome or Dia. Use a manual cookie only if browser import is unavailable.";
+    return "Sign in at opencode.ai in a supported browser. The helper imports that session automatically.";
   }
-  if (apiKey && cookie) return "Paste an API key, or sign in through a supported browser and leave the fields blank.";
-  if (apiKey) return "Create an API key in the provider console, paste it below, then save.";
-  return "Sign in through a supported browser. Use a manual cookie only if automatic import is unavailable.";
+  if (provider === "sakana") {
+    return "In console.sakana.ai, open developer tools, copy the Cookie request header, then save and enable.";
+  }
+  return API_KEY_PROVIDERS.has(provider)
+    ? "Create an API key in the provider console, paste the required details, then save and enable."
+    : "Complete sign-in in the provider CLI, app, or browser, then enable it here. No credentials are needed.";
 }
