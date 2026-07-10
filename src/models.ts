@@ -3,7 +3,7 @@ export type Capability =
   | "resetWindows" | "accountInfo" | "providerStatus" | "rawOutput" | "diagnostics";
 
 export type HelperState = "Missing" | "Installed" | "Update available" | "Running" | "Broken";
-export type DashboardSection = "credits" | "cost" | "tokens" | "account" | "pace" | "technical";
+export type DashboardSection = "analytics" | "credits" | "cost" | "tokens" | "account" | "pace" | "technical";
 
 export interface UsageData {
   provider: string;
@@ -40,6 +40,8 @@ export interface Settings {
   logLevel: "error" | "warn" | "info" | "debug";
   usageDisplay: "remaining" | "used";
   dashboardSections: DashboardSection[];
+  importLocalSessions: boolean;
+  includeRepositoryPaths: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -47,5 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   refreshIntervalMinutes: 1,
   logLevel: "info",
   usageDisplay: "remaining",
-  dashboardSections: ["credits", "cost", "tokens", "pace"]
+  dashboardSections: ["analytics", "credits", "cost", "tokens", "pace"],
+  importLocalSessions: true,
+  includeRepositoryPaths: false
 };

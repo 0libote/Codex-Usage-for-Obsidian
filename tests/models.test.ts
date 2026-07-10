@@ -8,7 +8,9 @@ describe("settings", () => {
       refreshIntervalMinutes: 1,
       logLevel: "info",
       usageDisplay: "remaining",
-      dashboardSections: ["credits", "cost", "tokens", "pace"]
+      dashboardSections: ["analytics", "credits", "cost", "tokens", "pace"],
+      importLocalSessions: true,
+      includeRepositoryPaths: false
     });
   });
 });

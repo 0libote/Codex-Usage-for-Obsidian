@@ -10,6 +10,7 @@ import { UsageCache } from "./cache";
 import { CodexUsageError } from "./errors";
 import { HELPER_MANIFEST, HelperPackage } from "./helper-manifest";
 import { HistorySample, historySample, parseHistory } from "./history";
+import { UsageAnalytics, UsageEvent, UsageLedger } from "./ledger";
 import { Logger } from "./logging";
 import { HelperState, UsageData } from "./models";
 import { detectTarget, HelperTarget } from "./platform";
@@ -45,6 +46,7 @@ export class HelperManager {
   private readonly cachePath: string;
   private readonly historyPath: string;
   private readonly cache = new UsageCache();
+  private readonly ledger: UsageLedger;
   private readonly children = new Set<ChildProcess>();
   private cacheLoaded = false;
   private historyLoaded = false;
@@ -58,6 +60,7 @@ export class HelperManager {
     this.metadataPath = join(this.installDir, "installed.json");
     this.cachePath = join(dataDir, "cache", "usage.json");
     this.historyPath = join(dataDir, "history.json");
+    this.ledger = new UsageLedger(dataDir);
   }
 
   async status(): Promise<HelperStatus> {
@@ -231,6 +234,22 @@ export class HelperManager {
   async history(): Promise<HistorySample[]> {
     await this.loadHistory();
     return [...this.historySamples];
+  }
+
+  async importLocalSessions(includePaths = false): Promise<UsageAnalytics> {
+    const result = await this.ledger.importLocalCodexSessions(includePaths);
+    if (result.filesImported) {
+      await this.logger?.write("info", `Imported ${result.eventsImported} local Codex usage events from ${result.filesScanned} session files.`);
+    }
+    return this.ledger.analytics();
+  }
+
+  async analytics(): Promise<UsageAnalytics> {
+    return this.ledger.analytics();
+  }
+
+  async exportEvents(): Promise<UsageEvent[]> {
+    return this.ledger.eventsForExport();
   }
 
   async clearCache(): Promise<void> {

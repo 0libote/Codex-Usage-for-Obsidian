@@ -8,9 +8,11 @@ This is an independent project. It is not an official CodexBar, Win-CodexBar, Ob
 
 The MVP supports Obsidian Desktop on macOS arm64/x64 and Windows x64. It is desktop-only because managed executables require Node/Electron APIs unavailable to Obsidian Mobile.
 
-The plugin shows a compact status-bar summary and a customizable dashboard. Quotas, credits, cost, tokens, and pace form the clean default; account identity, helper metadata, every normalized field, and raw output can be enabled in settings. Quotas can display remaining or used capacity.
+The plugin shows a responsive desktop dashboard and maintains a vault-synced dashboard note. Quotas, credits, cost, token analytics, and pace form the clean default; account identity, helper metadata, every normalized field, and raw output can be enabled in settings. Quotas can display remaining or used capacity.
 
-The last successful snapshot is stored locally and displayed immediately on startup. Each successful refresh also writes a limited `Codex Usage/Dashboard.md` note so the current summary remains readable through normal vault sync on Windows and mobile. Raw output, logs, and credentials are excluded from that note.
+The last successful snapshot is stored locally and displayed immediately on startup. Local Codex session logs are imported into a privacy-first usage ledger with exact token counts, models, sessions, repositories, providers, daily totals, and today/7-day/30-day/year/lifetime windows. Each refresh writes `Codex Usage/Dashboard.md`, a complete Markdown report that remains readable through normal vault sync on Windows, macOS, and mobile even when Codex or this plugin is not installed on the reading device. Raw output, prompts, logs, credentials, and repository paths are excluded from that note.
+
+The local ledger is stored beside the helper as `events.jsonl` and `import-state.json`. Repository names and Git remotes are retained for attribution; full repository paths are opt-in in settings. Use **Export JSON** in settings to write the tracked events into the vault for backup or analysis.
 
 Managed helper 0.38.1 packages are published separately for all supported targets and pinned by SHA-256 in the bundled manifest.
 
@@ -60,7 +62,7 @@ The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`
 - **Command or parse failure:** Run Diagnostics, inspect Raw Output, and check Obsidian’s developer console.
 - **Other providers:** Read the [provider support guide](docs/PROVIDER-SETUP.md). The dashboard currently displays Codex only.
 - **Logs:** Use Open Logs in plugin settings. Logs are stored beside the helper in the platform-native application-data directory and never written into notes.
-- **Application data:** macOS uses `~/Library/Application Support/Codex Usage/`; Windows uses `%LOCALAPPDATA%\Codex Usage\`. The limited cross-device dashboard is stored at `Codex Usage/Dashboard.md` inside the vault.
+- **Application data:** macOS uses `~/Library/Application Support/Codex Usage/`; Windows uses `%LOCALAPPDATA%\Codex Usage\`. The cross-device dashboard report is stored at `Codex Usage/Dashboard.md` inside the vault.
 - **Stale usage:** A refresh failed and the last successful cache entry is being shown with a warning.
 
 ## Security and attribution

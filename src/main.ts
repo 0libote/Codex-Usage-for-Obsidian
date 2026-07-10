@@ -4,9 +4,11 @@ import { appDataDir } from "./app-data";
 import { CodexUsageError } from "./errors";
 import { HelperManager, HelperStatus, ProviderConfigInput, ProviderStatus } from "./helper-manager";
 import { HistorySample, MetricKey } from "./history";
+import { emptyAnalytics, UsageAnalytics } from "./ledger";
 import { Logger } from "./logging";
 import { DashboardSection, DEFAULT_SETTINGS, Settings, UsageData } from "./models";
 import { providerFields, providerGuide } from "./provider-setup";
+import { dashboardMarkdown } from "./dashboard-markdown";
 
 const VIEW_TYPE = "codex-usage-dashboard";
 
@@ -14,6 +16,7 @@ export default class CodexUsagePlugin extends Plugin {
   settings: Settings = DEFAULT_SETTINGS;
   data: UsageData | null = null;
   history: HistorySample[] = [];
+  analytics: UsageAnalytics = emptyAnalytics();
   manager!: HelperManager;
   logger!: Logger;
   private refreshTimer?: number;
@@ -35,11 +38,16 @@ export default class CodexUsagePlugin extends Plugin {
       ["restart-helper", "Codex Usage: Restart Helper", () => this.restartHelper()],
       ["run-diagnostics", "Codex Usage: Run Diagnostics", () => this.diagnostics()],
       ["show-raw-output", "Codex Usage: Show Raw Output", () => this.showRaw()],
+      ["export-usage", "Codex Usage: Export Usage Data", () => this.exportUsage()],
       ["open-settings", "Codex Usage: Open Settings", () => this.openSettings()]
     ];
     for (const [id, name, callback] of commands) this.addCommand({ id, name, callback });
     this.data = await this.manager.cached() ?? null;
     this.history = await this.manager.history();
+    this.analytics = this.settings.importLocalSessions
+      ? await this.manager.importLocalSessions(this.settings.includeRepositoryPaths)
+      : await this.manager.analytics();
+    await this.writeSyncedDashboard();
     const startupTimer = window.setTimeout(() => void this.startupRefresh(), 3_000);
     this.register(() => window.clearTimeout(startupTimer));
     this.scheduleRefresh();
@@ -72,11 +80,16 @@ export default class CodexUsagePlugin extends Plugin {
 
   async refresh(bypassCache = false): Promise<void> {
     try {
+      this.analytics = this.settings.importLocalSessions
+        ? await this.manager.importLocalSessions(this.settings.includeRepositoryPaths)
+        : await this.manager.analytics();
       this.data = await this.manager.usage(this.settings.cacheTtlSeconds, bypassCache);
       this.history = await this.manager.history();
       await this.writeSyncedDashboard();
       this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
     } catch (error) {
+      await this.writeSyncedDashboard();
+      this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
       this.showError(error);
     }
   }
@@ -119,16 +132,33 @@ export default class CodexUsagePlugin extends Plugin {
   async clearCache(): Promise<void> {
     await this.manager.clearCache();
     this.data = null;
+    await this.writeSyncedDashboard();
     this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
   }
 
+  async exportUsage(): Promise<void> {
+    try {
+      const folder = normalizePath("Codex Usage");
+      if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
+      const path = normalizePath("Codex Usage/Usage Export.json");
+      const content = JSON.stringify({ generatedAt: new Date().toISOString(), events: await this.manager.exportEvents() }, null, 2);
+      const file = this.app.vault.getAbstractFileByPath(path);
+      if (file instanceof TFile) await this.app.vault.modify(file, content);
+      else await this.app.vault.create(path, content);
+      new Notice("Usage data exported to codex usage/usage export.json.");
+    } catch (error) {
+      this.showError(error);
+    }
+  }
+
   private async writeSyncedDashboard(): Promise<void> {
-    if (!this.data) return;
     const path = normalizePath("Codex Usage/Dashboard.md");
+    const existing = this.app.vault.getAbstractFileByPath(path);
+    if (!this.data && !this.analytics.exact && existing instanceof TFile) return;
     const folder = path.slice(0, path.lastIndexOf("/"));
     if (!this.app.vault.getAbstractFileByPath(folder)) await this.app.vault.createFolder(folder);
-    const content = dashboardMarkdown(this.data, this.settings.usageDisplay);
-    const file = this.app.vault.getAbstractFileByPath(path);
+    const content = dashboardMarkdown(this.data, this.analytics, this.settings.usageDisplay);
+    const file = existing;
     if (file instanceof TFile) await this.app.vault.modify(file, content);
     else await this.app.vault.create(path, content);
   }
@@ -155,6 +185,8 @@ export default class CodexUsagePlugin extends Plugin {
 }
 
 class DashboardView extends ItemView {
+  private analyticsRange: AnalyticsRange = "week";
+
   constructor(leaf: WorkspaceLeaf, private plugin: CodexUsagePlugin) {
     super(leaf);
   }
@@ -180,72 +212,97 @@ class DashboardView extends ItemView {
     customize.addEventListener("click", () => this.plugin.openSettings());
     const refresh = actions.createEl("button", { text: "Refresh", cls: "mod-cta" });
     refresh.addEventListener("click", () => void this.plugin.refresh(true));
-    if (!this.plugin.data) {
+    const analytics = this.plugin.analytics;
+    if (!this.plugin.data && !analytics.exact) {
       root.createEl("p", {
-        text: "Install the managed helper in settings to display usage.",
+        text: "Install the helper or start a local codex session to populate this dashboard.",
         cls: "codex-usage-muted"
       });
       return;
     }
     const data = this.plugin.data;
     root.createDiv({
-      text: `Updated ${new Date(data.timestamp).toLocaleString()} · ${data.provider}`,
+      text: data
+        ? `Live snapshot ${new Date(data.timestamp).toLocaleString()} · ${data.provider}`
+        : `Local session data · updated ${new Date(analytics.generatedAt).toLocaleString()}`,
       cls: "codex-usage-updated"
     });
-    for (const warning of data.warnings) {
+    for (const warning of data?.warnings ?? []) {
       root.createDiv({ text: warning, cls: "codex-usage-notice" });
     }
 
-    const quotas = root.createDiv({ cls: "codex-usage-quotas" });
-    quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay,
-      () => this.openMetric("sessionPercent", "5 hour usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current five-hour window."));
-    quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay,
-      () => this.openMetric("weeklyPercent", "Weekly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current weekly window."));
-    if (data.usage.monthly) {
-      quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay,
-        () => this.openMetric("monthlyPercent", "Monthly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current monthly window."));
+    if (data) {
+      const quotas = root.createDiv({ cls: "codex-usage-quotas" });
+      quota(quotas, "5 hour usage limit", data.usage.session, this.plugin.settings.usageDisplay,
+        () => this.openMetric("sessionPercent", "5 hour usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current five-hour window."));
+      quota(quotas, "Weekly usage limit", data.usage.weekly, this.plugin.settings.usageDisplay,
+        () => this.openMetric("weeklyPercent", "Weekly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current weekly window."));
+      if (data.usage.monthly) {
+        quota(quotas, "Monthly usage limit", data.usage.monthly, this.plugin.settings.usageDisplay,
+          () => this.openMetric("monthlyPercent", "Monthly usage", "%", "Codex provider quota", "Used percentage reported by the helper for the current monthly window."));
+      }
     }
 
     const sections = new Set(this.plugin.settings.dashboardSections);
+    if (sections.has("analytics")) analyticsPanel(root, analytics, this.analyticsRange, range => {
+      this.analyticsRange = range;
+      this.render();
+    });
     const grid = root.createDiv({ cls: "codex-usage-grid" });
-    if (sections.has("credits")) {
+    if (data && sections.has("credits")) {
       metric(grid, "Credits remaining", scalar(data.credits.remaining), "Beyond plan limits",
         () => this.openMetric("credits", "Credits remaining", "", "Codex provider response", "Remaining credits beyond plan limits."));
     }
-    if (sections.has("cost")) {
+    if (data && sections.has("cost")) {
       metric(grid, "Last 30 days", money(data.cost.last30DaysCostUSD, data.cost.currencyCode), "Estimated local cost",
         () => this.openMetric("cost30Days", "30-day cost", "currency", "Local Codex session logs", "Estimated cost of usage found in the last 30 days."));
       metric(grid, "Current session", money(data.cost.sessionCostUSD, data.cost.currencyCode), "Estimated local cost",
         () => this.openMetric("sessionCost", "Session cost", "currency", "Local Codex session logs", "Estimated cost accumulated in the current session."));
     }
     if (sections.has("tokens")) {
-      const tokens = tokenUsage(data.cost);
+      const exactTokens = analytics.windows.lifetime.tokens;
+      const tokens = analytics.exact ? {
+        processed: exactTokens.total,
+        cached: exactTokens.cached,
+        input: exactTokens.input,
+        output: exactTokens.output,
+        nonCached: Math.max(0, exactTokens.total - exactTokens.cached),
+        cacheRate: exactTokens.total ? exactTokens.cached / exactTokens.total * 100 : undefined
+      } : data ? tokenUsage(data.cost) : {
+        processed: analytics.windows.lifetime.tokens.total,
+        cached: analytics.windows.lifetime.tokens.cached,
+        input: analytics.windows.lifetime.tokens.input,
+        output: analytics.windows.lifetime.tokens.output,
+        nonCached: Math.max(0, analytics.windows.lifetime.tokens.total - analytics.windows.lifetime.tokens.cached),
+        cacheRate: analytics.windows.lifetime.tokens.total
+          ? analytics.windows.lifetime.tokens.cached / analytics.windows.lifetime.tokens.total * 100
+          : undefined
+      };
+      const { processed, cached, input, output, cacheRate } = tokens;
       metric(
         grid,
         "Lifetime tokens",
-        count(tokens.processed),
-        tokens.processed === undefined
-          ? "Local Codex history"
-          : `${count(tokens.nonCached)} non-cached · ${count(tokens.cached)} cache reads`,
+        count(processed),
+        analytics.exact ? `${count(Math.max(0, (processed ?? 0) - cached))} non-cached · exact local events` : "Reported by the helper",
         () => this.openMetric("tokens", "Lifetime tokens", "count", "Local Codex session logs", "Input and output tokens processed. Cache-read tokens are included in processed tokens.")
       );
-      metric(grid, "Input tokens", count(tokens.input), "Lifetime local history",
+      metric(grid, "Input tokens", count(input), analytics.exact ? "Exact local history" : "Reported local history",
         () => this.openMetric("inputTokens", "Input tokens", "count", "Local Codex session logs", "Tokens sent to models across the local history."));
-      metric(grid, "Output tokens", count(tokens.output), "Lifetime local history",
+      metric(grid, "Output tokens", count(output), analytics.exact ? "Exact local history" : "Reported local history",
         () => this.openMetric("outputTokens", "Output tokens", "count", "Local Codex session logs", "Tokens generated by models across the local history."));
-      metric(grid, "Cache hit rate", percent(tokens.cacheRate), `${count(tokens.cached)} cached tokens`,
+      metric(grid, "Cache hit rate", percent(cacheRate), `${count(cached)} cached tokens`,
         () => this.openMetric("cacheRate", "Cache hit rate", "%", "Local Codex session logs", "Cache-read tokens divided by all processed tokens."));
     }
-    if (sections.has("account")) {
+    if (data && sections.has("account")) {
       metric(grid, "Account", accountSummary(data.account), scalar(data.account.planType ?? data.account.plan) || "Local account");
       metric(grid, "Provider status", scalar(data.status.status ?? data.status.message), "Last helper response");
     }
-    if (sections.has("pace")) {
+    if (data && sections.has("pace")) {
       const pace = record(data.pace.secondary);
       metric(grid, "Weekly pace", scalar(pace.summary), pace.willLastToReset === true ? "On track" : "Projected usage");
     }
     if (!grid.childElementCount) grid.remove();
-    if (sections.has("technical")) technicalDetails(root, data);
+    if (data && sections.has("technical")) technicalDetails(root, data);
   }
 
   private openMetric(key: MetricKey, title: string, unit: MetricUnit, source: string, makeup: string): void {
@@ -314,6 +371,26 @@ class CodexUsageSettings extends PluginSettingTab {
 
     new Setting(this.containerEl).setName("Dashboard").setHeading();
     new Setting(this.containerEl)
+      .setName("Import local codex sessions")
+      .setDesc("Track exact tokens, models, sessions, and repositories from local codex session logs. Nothing is uploaded.")
+      .addToggle(toggle => toggle.setValue(plugin.settings.importLocalSessions).onChange(async enabled => {
+        plugin.settings.importLocalSessions = enabled;
+        await plugin.saveSettings();
+        await plugin.refresh(true);
+      }));
+    new Setting(this.containerEl)
+      .setName("Store repository paths")
+      .setDesc("Keep full working-directory paths in the local ledger. Repository names and Git remotes are stored without this.")
+      .addToggle(toggle => toggle.setValue(plugin.settings.includeRepositoryPaths).onChange(async enabled => {
+        plugin.settings.includeRepositoryPaths = enabled;
+        await plugin.saveSettings();
+        await plugin.refresh(true);
+      }));
+    new Setting(this.containerEl)
+      .setName("Export tracked events")
+      .setDesc("Write a JSON export into the vault for backup or analysis.")
+      .addButton(button => button.setButtonText("Export JSON").onClick(() => void plugin.exportUsage()));
+    new Setting(this.containerEl)
       .setName("Quota display")
       .setDesc("Show the amount remaining like the codex dashboard, or the amount already used.")
       .addDropdown(dropdown => dropdown
@@ -325,6 +402,7 @@ class CodexUsageSettings extends PluginSettingTab {
           this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach(leaf => (leaf.view as DashboardView).render());
         }));
     const dashboardOptions: Array<[DashboardSection, string, string]> = [
+      ["analytics", "Token analytics", "Show exact usage by time range, repository, model, and session."],
       ["credits", "Credits", "Show credits remaining beyond plan limits."],
       ["cost", "Cost estimates", "Show session and 30-day estimated cost."],
       ["tokens", "Token usage", "Show token totals from local Codex history."],
@@ -506,6 +584,7 @@ class TextModal extends Modal {
 }
 
 type MetricUnit = "" | "%" | "count" | "currency";
+type AnalyticsRange = "today" | "week" | "month" | "year" | "lifetime";
 type MetricDetails = {
   key: MetricKey;
   title: string;
@@ -584,6 +663,62 @@ class MetricModal extends Modal {
       text: `${new Date(first.timestamp).toLocaleDateString()} · range ${formatMetric(min, this.metricDetails.unit, this.plugin.data)}–${formatMetric(max, this.metricDetails.unit, this.plugin.data)} · ${new Date(last.timestamp).toLocaleDateString()}`,
       cls: "codex-usage-chart-axis"
     });
+  }
+}
+
+function analyticsPanel(root: HTMLElement, analytics: UsageAnalytics, range: AnalyticsRange, onRange: (range: AnalyticsRange) => void): void {
+  const section = root.createEl("section", { cls: "codex-usage-analytics" });
+  const heading = section.createDiv({ cls: "codex-usage-section-heading" });
+  const copy = heading.createDiv();
+  copy.createEl("h3", { text: "Token analytics" });
+  copy.createDiv({ text: analytics.exact ? "Exact local Codex session events" : "Waiting for exact local session events", cls: "codex-usage-muted" });
+  const select = heading.createEl("select", { attr: { "aria-label": "Analytics range" } });
+  for (const [value, label] of [["today", "Today"], ["week", "Last 7 days"], ["month", "Last 30 days"], ["year", "This year"], ["lifetime", "All tracked time"]] as const) {
+    select.createEl("option", { value, text: label });
+  }
+  select.value = range;
+  select.addEventListener("change", () => onRange(select.value as AnalyticsRange));
+  const selected = analytics.windows[range];
+  const stats = section.createDiv({ cls: "codex-usage-analytics-stats" });
+  analyticsStat(stats, "Tokens", count(selected.tokens.total), analytics.exact ? "Exact event total" : "Helper-reported total");
+  analyticsStat(stats, "Turns", count(selected.events), `${count(selected.sessions)} sessions`);
+  analyticsStat(stats, "Repositories", count(selected.repositories), selected.repositories === 1 ? "One active project" : "Projects with activity");
+  analyticsStat(stats, "Models", count(selected.models), "Models used");
+
+  const columns = section.createDiv({ cls: "codex-usage-analytics-columns" });
+  analyticsTable(columns, "Repositories", analytics.byRepository, "No repository data yet.");
+  analyticsTable(columns, "Models", analytics.byModel, "No model data yet.");
+  analyticsTable(columns, "Providers", analytics.byProvider, "No provider data yet.");
+  analyticsTable(columns, "Years", analytics.byYear, "No yearly data yet.");
+  const coverage = section.createDiv({ cls: "codex-usage-coverage" });
+  coverage.createDiv({ text: analytics.firstTrackedAt ? `Tracking since ${new Date(analytics.firstTrackedAt).toLocaleDateString()}` : "Tracking starts with the first local Codex event." });
+  const average = selected.events ? selected.tokens.total / selected.events : 0;
+  coverage.createDiv({ text: `${count(analytics.trackedDays)} tracked days · ${count(analytics.unknownRepositoryEvents)} unattributed events · ${count(average)} tokens per turn`, cls: "codex-usage-muted" });
+}
+
+function analyticsStat(root: HTMLElement, title: string, value: string, note: string): void {
+  const stat = root.createDiv({ cls: "codex-usage-analytics-stat" });
+  stat.createDiv({ text: title, cls: "codex-usage-card-title" });
+  stat.createDiv({ text: value || "—", cls: "codex-usage-analytics-value" });
+  stat.createDiv({ text: note, cls: "codex-usage-card-note" });
+}
+
+function analyticsTable(root: HTMLElement, title: string, rows: UsageAnalytics["byRepository"], empty: string): void {
+  const group = root.createDiv({ cls: "codex-usage-breakdown" });
+  group.createEl("h4", { text: title });
+  if (!rows.length) {
+    group.createDiv({ text: empty, cls: "codex-usage-muted" });
+    return;
+  }
+  const table = group.createEl("table");
+  const head = table.createEl("thead").createEl("tr");
+  for (const label of ["Name", "Tokens", "Turns"]) head.createEl("th", { text: label });
+  const body = table.createEl("tbody");
+  for (const row of rows.slice(0, 5)) {
+    const line = body.createEl("tr");
+    line.createEl("th", { text: row.label, attr: { scope: "row" } });
+    line.createEl("td", { text: count(row.tokens.total) });
+    line.createEl("td", { text: count(row.events) });
   }
 }
 
@@ -674,34 +809,6 @@ function technicalDetails(root: HTMLElement, data: UsageData): void {
   }
 }
 
-function dashboardMarkdown(data: UsageData, display: Settings["usageDisplay"]): string {
-  const percent = (value: Record<string, unknown>) => {
-    const used = [value.percent, value.usedPercent, value.usagePercent].find(item => typeof item === "number");
-    return typeof used === "number" ? `${display === "remaining" ? 100 - used : used}% ${display}` : "Not available";
-  };
-  const tokens = tokenUsage(data.cost);
-  return `# Codex usage
-
-> [!info] Synced snapshot
-> Updated by ${data.platform} at ${new Date(data.timestamp).toLocaleString()}. On a supported desktop, install the helper for local live refreshes.
-
-| Balance | Current value | Reset |
-| --- | ---: | --- |
-| 5 hour usage limit | **${percent(data.usage.session)}** | ${formatReset(data.usage.session.resetsAt ?? data.usage.session.resetAt)} |
-| Weekly usage limit | **${percent(data.usage.weekly)}** | ${formatReset(data.usage.weekly.resetsAt ?? data.usage.weekly.resetAt)} |
-| Credits remaining | **${scalar(data.credits.remaining) || "Not available"}** | |
-
-## Cost
-
-- Last 30 days: ${money(data.cost.last30DaysCostUSD, data.cost.currencyCode) || "Not available"}
-- Session: ${money(data.cost.sessionCostUSD, data.cost.currencyCode) || "Not available"}
-- Non-cached tokens: ${count(tokens.nonCached) || "Not available"}
-- Tokens processed: ${count(tokens.processed) || "Not available"} (${count(tokens.cached) || "0"} cache reads)
-
-_This file is generated by Codex Usage. Raw helper output and credentials are never synced._
-`;
-}
-
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
@@ -771,7 +878,7 @@ function parseSettings(value: unknown): Settings {
   const saved = value as Record<string, unknown>;
   const sections = Array.isArray(saved.dashboardSections)
     ? saved.dashboardSections.filter((item): item is DashboardSection =>
-      ["credits", "cost", "tokens", "account", "pace", "technical"].includes(String(item)))
+      ["analytics", "credits", "cost", "tokens", "account", "pace", "technical"].includes(String(item)))
     : DEFAULT_SETTINGS.dashboardSections;
   return {
     cacheTtlSeconds: typeof saved.cacheTtlSeconds === "number" ? saved.cacheTtlSeconds : DEFAULT_SETTINGS.cacheTtlSeconds,
@@ -780,6 +887,8 @@ function parseSettings(value: unknown): Settings {
       ? saved.logLevel as Settings["logLevel"]
       : DEFAULT_SETTINGS.logLevel,
     usageDisplay: saved.usageDisplay === "used" ? "used" : DEFAULT_SETTINGS.usageDisplay,
-    dashboardSections: [...new Set(sections)]
+    dashboardSections: [...new Set(sections)],
+    importLocalSessions: typeof saved.importLocalSessions === "boolean" ? saved.importLocalSessions : DEFAULT_SETTINGS.importLocalSessions,
+    includeRepositoryPaths: typeof saved.includeRepositoryPaths === "boolean" ? saved.includeRepositoryPaths : DEFAULT_SETTINGS.includeRepositoryPaths
   };
 }
