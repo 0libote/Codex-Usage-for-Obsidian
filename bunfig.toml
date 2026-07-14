@@ -1,0 +1,3 @@
+[install]
+# Avoid resolving brand-new package releases during their highest-risk window.
+minimumReleaseAge = 259200
