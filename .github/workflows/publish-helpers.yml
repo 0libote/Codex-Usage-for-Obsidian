@@ -45,7 +45,7 @@ jobs:
           asset="codex-usage-helper-${{ matrix.target }}.tar.gz"
           tar -czf "$asset" -C package CodexBarCLI CodexBar-LICENSE
           shasum -a 256 "$asset" > "$asset.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: helper-${{ matrix.target }}
           path: codex-usage-helper-${{ matrix.target }}.tar.gz*
@@ -87,7 +87,7 @@ jobs:
           Compress-Archive package\* codex-usage-helper-windows-x64.zip
           $hash = (Get-FileHash codex-usage-helper-windows-x64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  codex-usage-helper-windows-x64.zip" | Set-Content codex-usage-helper-windows-x64.zip.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: helper-windows-x64
           path: codex-usage-helper-windows-x64.zip*
