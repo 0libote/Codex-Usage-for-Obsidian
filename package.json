@@ -19,6 +19,6 @@
     "eslint-plugin-obsidianmd": "^0.4.1",
     "obsidian": "^1.7.7",
     "typescript": "^6.0.3",
-    "vitest": "^2.1.8"
+    "vitest": "^4.1.10"
   }
 }
