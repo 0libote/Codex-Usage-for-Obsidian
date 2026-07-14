@@ -22,7 +22,7 @@ jobs:
           - upstream_arch: x86_64
             target: macos-x64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Download and verify upstream CLI
         env:
           VERSION: ${{ inputs.upstream_version }}
@@ -53,7 +53,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Download and verify upstream installer
         shell: pwsh
         env:
