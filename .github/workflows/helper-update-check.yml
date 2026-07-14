@@ -27,7 +27,7 @@ jobs:
       - run: npm test
       - run: npm run build
       - name: Create review PR
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: automation/helper-updates
           delete-branch: true
