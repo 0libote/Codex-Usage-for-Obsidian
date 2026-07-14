@@ -1,7 +1,5 @@
 {
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": { "*": ["node_modules/*"] },
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
