@@ -13,21 +13,20 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+          bun-version: 1.3.14
+      - run: bun ci
       - name: Sync version from tag
         id: sync-version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "Using release version $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          RELEASE_VERSION="$VERSION" node <<'NODE'
+          RELEASE_VERSION="$VERSION" bun <<'BUN'
           const fs = require("node:fs");
 
           const version = process.env.RELEASE_VERSION;
@@ -54,28 +53,23 @@ jobs:
           packageJson.version = version;
           writeJson("package.json", packageJson);
 
-          const packageLock = readJson("package-lock.json");
-          packageLock.version = version;
-          packageLock.packages ??= {};
-          packageLock.packages[""] ??= {};
-          packageLock.packages[""].version = version;
-          writeJson("package-lock.json", packageLock);
-
           const versions = readJson("versions.json");
           versions[version] = manifest.minAppVersion;
           writeJson("versions.json", versions);
 
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `changed=${changed}\n`);
-          NODE
-      - run: npm test
-      - run: npm run check
-      - run: npm run build
+          BUN
+      - run: bun run test
+      - run: bun run check
+      - run: bun run build
+      - name: Create release archive
+        run: zip -j codex-usage-for-obsidian.zip main.js manifest.json styles.css
       - name: Commit synced version
         if: steps.sync-version.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add manifest.json package.json package-lock.json versions.json
+          git add manifest.json package.json versions.json
           git commit -m "Bump version to ${{ steps.sync-version.outputs.version }}"
           git push origin HEAD:${{ github.event.repository.default_branch }}
       - name: Version already synced
@@ -94,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.sync-version.outputs.version }}
         run: |
-          files=(main.js manifest.json styles.css)
+          files=(main.js manifest.json styles.css codex-usage-for-obsidian.zip)
           if gh release view "$VERSION" >/dev/null 2>&1; then
             gh release upload "$VERSION" "${files[@]}" --clobber
           else
