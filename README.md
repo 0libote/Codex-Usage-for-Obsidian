@@ -32,12 +32,13 @@ See [Provider support](docs/PROVIDER-SETUP.md) for the exact support boundary, O
 
 ## Development
 
-Requires Node.js 20 or newer.
+Requires Bun 1.3.14 or newer.
 
 ```sh
-npm ci
-npm test
-npm run build
+bun ci
+bun run test
+bun run check
+bun run build
 ```
 
 Copy or symlink this repository into:
@@ -50,7 +51,7 @@ Ensure `main.js`, `manifest.json`, and `styles.css` are present, enable communit
 
 ## Releases
 
-Push a semantic-version tag such as `0.2.0` or `v0.2.0`. `release.yml` removes an optional `v`, synchronizes `package.json`, `package-lock.json`, `manifest.json`, and `versions.json`, commits changed metadata to the default branch, runs tests/checks/build, attests `main.js`, `manifest.json`, and `styles.css`, and creates or updates the normalized release tag. Helper binaries remain in separate helper releases.
+Push a semantic-version tag such as `0.2.0` or `v0.2.0`. `release.yml` installs from `bun.lock`, removes an optional `v`, synchronizes `package.json`, `manifest.json`, and `versions.json`, commits changed metadata to the default branch, runs tests/checks/build, creates the release ZIP, attests the release assets, and creates or updates the normalized release tag. Helper binaries remain in separate helper releases.
 
 The daily helper watcher checks `steipete/CodexBar` and `Finesssee/Win-CodexBar`. For an unambiguous upstream CLI asset it builds a candidate package, calculates SHA-256, uploads it to a draft helper release, updates compatibility metadata, runs checks, and opens a pull request. It never auto-merges. A reviewer must test each target and publish the helper release.
 
